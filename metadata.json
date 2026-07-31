@@ -1,0 +1,6 @@
+{
+  "name": "SocietyOps AI",
+  "description": "Autonomous AI Maintenance Coordination Agent for Indian housing societies, RWAs, and gated communities.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
