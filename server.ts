@@ -1,16 +1,40 @@
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
+import net from 'net';
 import { createServer as createViteServer } from 'vite';
 import { dbStore } from './src/database/store';
+import authRoutes from "./src/auth/authRoutes";
 import { processResidentMessage } from './src/agents/orchestrator';
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const defaultPort = Number(process.env.PORT) || 3000;
+  async function isPortFree(port: number): Promise<boolean> {
+    return new Promise((resolve) => {
+      const tester = net.createServer()
+        .once('error', () => resolve(false))
+        .once('listening', () => {
+          tester.close(() => resolve(true));
+        })
+        .listen(port, '0.0.0.0');
+    });
+  }
+
+  async function findAvailablePort(startPort: number, maxAttempts = 50): Promise<number> {
+    let port = startPort;
+    for (let i = 0; i < maxAttempts; i += 1) {
+      if (await isPortFree(port)) return port;
+      port += 1;
+    }
+    throw new Error(`No available port found starting at ${startPort}`);
+  }
+
+  const PORT = await findAvailablePort(defaultPort);
 
   app.use(cors());
   app.use(express.json({ limit: '10mb' }));
+app.use("/api/auth", authRoutes);
 
   // --- REST API ENDPOINTS ---
 
@@ -185,12 +209,22 @@ async function startServer() {
   });
 
   // --- VITE MIDDLEWARE SETUP ---
+  const HMR_PORT = Number(process.env.HMR_PORT) || 24678;
   if (process.env.NODE_ENV !== 'production') {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
-    });
-    app.use(vite.middlewares);
+    try {
+      const vite = await createViteServer({
+        server: { middlewareMode: true, hmr: { port: HMR_PORT } },
+        appType: 'spa',
+      });
+      app.use(vite.middlewares);
+    } catch (viteErr) {
+      console.warn('Vite dev server HMR failed, falling back to disabled HMR:', viteErr);
+      const vite = await createViteServer({
+        server: { middlewareMode: true, hmr: false },
+        appType: 'spa',
+      });
+      app.use(vite.middlewares);
+    }
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));

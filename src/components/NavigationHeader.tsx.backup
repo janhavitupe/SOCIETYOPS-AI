@@ -1,5 +1,5 @@
 import React from 'react';
-import { Building2, MessageSquare, LayoutDashboard, ShieldCheck, Zap, Bell, Sun, Moon, Users } from 'lucide-react';
+import { Building2, MessageSquare, LayoutDashboard, ShieldCheck, Zap, Bell, Sun, Moon, Users, LogIn, LogOut, UserPlus } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 interface NavigationHeaderProps {
@@ -13,7 +13,6 @@ interface NavigationHeaderProps {
   onOpenReport: () => void;
   onRunFollowupCycle: () => void;
   isFollowupRunning: boolean;
-  user?: any;
 }
 
 export const NavigationHeader: React.FC<NavigationHeaderProps> = ({
@@ -27,15 +26,14 @@ export const NavigationHeader: React.FC<NavigationHeaderProps> = ({
   onOpenReport,
   onRunFollowupCycle,
   isFollowupRunning,
-  user,
 }) => {
-  const { logout } = useAuth();
-  const role = user?.role || 'guest';
+  const { user, isAuthenticated, logout } = useAuth();
+
   return (
     <header className={`border-b sticky top-0 z-30 transition-colors ${isDarkMode ? 'bg-[#181817] border-[#2D2D2A] text-slate-100' : 'bg-white border-[#E5E5E1] text-[#1A1A1A]'}`}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
-          
+
           {/* Logo & Society Name */}
           <div className="flex items-center space-x-3">
             <div className="flex items-center space-x-2">
@@ -55,7 +53,7 @@ export const NavigationHeader: React.FC<NavigationHeaderProps> = ({
             </div>
           </div>
 
-          {/* Navigation Tabs - hide manager/vendor for residents */}
+          {/* Navigation Tabs */}
           <nav className="hidden md:flex items-center space-x-1 bg-[#F0F0EE] dark:bg-[#222220] p-1 rounded-md border border-[#E5E5E1] dark:border-[#2D2D2A]">
             <button
               onClick={() => setActiveTab('resident')}
@@ -69,38 +67,78 @@ export const NavigationHeader: React.FC<NavigationHeaderProps> = ({
               <span>Resident Chat</span>
             </button>
 
-            {role !== 'resident' && (
-              <>
-                <button
-                  onClick={() => setActiveTab('manager')}
-                  className={`flex items-center space-x-1.5 px-3.5 py-1.5 rounded text-xs font-bold uppercase tracking-wider transition-all ${
-                    activeTab === 'manager'
-                      ? 'bg-white dark:bg-[#181817] text-[#6366F1] shadow-2xs'
-                      : 'text-[#666660] dark:text-slate-400 hover:text-[#1A1A1A] dark:hover:text-white'
-                  }`}
-                >
-                  <LayoutDashboard className="w-3.5 h-3.5" />
-                  <span>Dashboard</span>
-                </button>
+            <button
+              onClick={() => setActiveTab('manager')}
+              className={`flex items-center space-x-1.5 px-3.5 py-1.5 rounded text-xs font-bold uppercase tracking-wider transition-all ${
+                activeTab === 'manager'
+                  ? 'bg-white dark:bg-[#181817] text-[#6366F1] shadow-2xs'
+                  : 'text-[#666660] dark:text-slate-400 hover:text-[#1A1A1A] dark:hover:text-white'
+              }`}
+            >
+              <LayoutDashboard className="w-3.5 h-3.5" />
+              <span>Dashboard</span>
+            </button>
 
-                <button
-                  onClick={() => setActiveTab('vendors')}
-                  className={`flex items-center space-x-1.5 px-3.5 py-1.5 rounded text-xs font-bold uppercase tracking-wider transition-all ${
-                    activeTab === 'vendors'
-                      ? 'bg-white dark:bg-[#181817] text-[#6366F1] shadow-2xs'
-                      : 'text-[#666660] dark:text-slate-400 hover:text-[#1A1A1A] dark:hover:text-white'
-                  }`}
-                >
-                  <Users className="w-3.5 h-3.5" />
-                  <span>Vendors</span>
-                </button>
-              </>
-            )}
+            <button
+              onClick={() => setActiveTab('vendors')}
+              className={`flex items-center space-x-1.5 px-3.5 py-1.5 rounded text-xs font-bold uppercase tracking-wider transition-all ${
+                activeTab === 'vendors'
+                  ? 'bg-white dark:bg-[#181817] text-[#6366F1] shadow-2xs'
+                  : 'text-[#666660] dark:text-slate-400 hover:text-[#1A1A1A] dark:hover:text-white'
+              }`}
+            >
+              <Users className="w-3.5 h-3.5" />
+              <span>Vendors</span>
+            </button>
           </nav>
 
           {/* Right Action Controls */}
           <div className="flex items-center space-x-2 sm:space-x-3">
-            
+            {isAuthenticated ? (
+              <>
+                {/* User Info & Logout */}
+                <div className="flex items-center space-x-3">
+                  <div className="flex items-center space-x-2">
+                    <UserPlus className="w-4 h-4" />
+                    <div>
+                      <span className="text-xs font-medium text-slate-700 dark:text-slate-300">{user?.name}</span>
+                      <span className="text-[10px] text-slate-500 dark:text-slate-400">{user?.flatNumber}</span>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={logout}
+                    title="Log out"
+                    className="p-2 rounded text-[#666660] dark:text-slate-300 hover:bg-[#F0F0EE] dark:hover:bg-[#222220] transition-all cursor-pointer border border-transparent hover:border-[#E5E5E1]"
+                  >
+                    <LogOut className="w-4 h-4" />
+                  </button>
+                </div>
+            ) : (
+              <>
+                {/* Login/Register Buttons when not authenticated */}
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={() => {
+                      window.history.pushState({}, '', '/login');
+                      window.dispatchEvent(new PopStateEvent('popstate'));
+                    }}
+                    className="hidden lg:flex items-center space-x-1.5 px-3 py-1.5 rounded text-xs font-bold uppercase tracking-wider bg-indigo-50 text-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-800 hover:bg-indigo-100 dark:hover:bg-indigo-900 transition-all cursor-pointer"
+                  >
+                    Log In
+                  </button>
+                  <button
+                    onClick={() => {
+                      window.history.pushState({}, '', '/register');
+                      window.dispatchEvent(new PopStateEvent('popstate'));
+                    }}
+                    className="hidden lg:flex items-center space-x-1.5 px-3 py-1.5 rounded text-xs font-bold uppercase tracking-wider bg-[#1A1A1A] text-white dark:bg-white dark:text-[#1A1A1A] hover:bg-black dark:hover:bg-slate-100 transition-all cursor-pointer shadow-2xs"
+                  >
+                    Register
+                  </button>
+                </div>
+            )}
+
             {/* Auto-Pilot Trigger Button */}
             <button
               onClick={onRunFollowupCycle}
@@ -142,23 +180,7 @@ export const NavigationHeader: React.FC<NavigationHeaderProps> = ({
             >
               {isDarkMode ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4" />}
             </button>
-
-            {/* User / Logout */}
-            <div className="flex items-center space-x-2">
-              {user && (
-                <div className="flex items-center space-x-2">
-                  <span className="text-sm font-medium">{user.name}</span>
-                  <button
-                    onClick={() => logout()}
-                    className="px-3 py-1 rounded bg-red-50 text-red-700 border border-red-200 hover:bg-red-100"
-                  >
-                    Sign Out
-                  </button>
-                </div>
-              )}
-            </div>
           </div>
-
         </div>
 
         {/* Mobile Sub-Nav */}
@@ -198,6 +220,42 @@ export const NavigationHeader: React.FC<NavigationHeaderProps> = ({
           </button>
         </div>
 
+        {/* Mobile Auth Controls */}
+        {isAuthenticated ? (
+          <div className="md:hidden flex items-center justify-around py-2 border-t border-[#E5E5E1] dark:border-[#2D2D2A]">
+            <div className="flex items-center space-x-2">
+              <UserPlus className="w-4 h-4" />
+              <span className="text-xs font-medium">{user?.name}</span>
+            </div>
+            <button
+              onClick={logout}
+              className="p-2 rounded text-[#666660] dark:text-slate-300 hover:bg-[#F0F0EE] dark:hover:bg-[#222220] transition-all cursor-pointer border border-transparent hover:border-[#E5E5E1]"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
+        ) : (
+          <div className="md:hidden flex items-center justify-around py-2 border-t border-[#E5E5E1] dark:border-[#2D2D2A]">
+            <button
+              onClick={() => {
+                window.history.pushState({}, '', '/login');
+                window.dispatchEvent(new PopStateEvent('popstate'));
+              }}
+              className="p-2 rounded text-[#666660] dark:text-slate-300 hover:bg-[#F0F0EE] dark:hover:bg-[#222220] transition-all cursor-pointer border border-transparent hover:border-[#E5E5E1]"
+            >
+              Log In
+            </button>
+            <button
+              onClick={() => {
+                window.history.pushState({}, '', '/register');
+                window.dispatchEvent(new PopStateEvent('popstate'));
+              }}
+              className="ml-2 p-2 rounded border border-transparent hover:border-[#E5E5E1]"
+            >
+              Register
+            </button>
+          </div>
+        )}
       </div>
     </header>
   );

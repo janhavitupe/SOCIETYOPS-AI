@@ -1,4 +1,5 @@
 import { Ticket, Vendor, NotificationLog, AgentActivityLog, DailyReport, UrgencyLevel, TicketStatus, IssueCategory, SocietyProfile, ResidentProfile } from '../types';
+import { hashPassword } from '../auth/authUtils';
 
 class SocietyDatabase {
   private tickets: Ticket[] = [];
@@ -7,6 +8,7 @@ class SocietyDatabase {
   private agentLogs: AgentActivityLog[] = [];
   private societyProfile: SocietyProfile;
   private residentProfiles: ResidentProfile[] = [];
+  private residentPasswords: Map<string, string> = new Map(); // residentId -> hashedPassword
 
   constructor() {
     this.societyProfile = {
@@ -368,6 +370,13 @@ class SocietyDatabase {
         createdAt: minAgo(400),
       }
     ];
+
+    // Add password hashes for existing residents (demo passwords)
+    // In production, these would be set during registration
+    this.residentPasswords.set('RES-001', hashPassword('vikram123')); // Vikram Mehta
+    this.residentPasswords.set('RES-002', hashPassword('ananya123')); // Mrs. Ananya Sharma
+    this.residentPasswords.set('RES-003', hashPassword('arvind123')); // Mr. Arvind Sharma
+    this.residentPasswords.set('RES-004', hashPassword('admin123')); // Admin Desk
 
     this.agentLogs = [
       {
@@ -767,6 +776,70 @@ class SocietyDatabase {
       escalatedTickets,
       remindersSent
     };
+  }
+
+  // --- AUTHENTICATION METHODS ---
+
+  /**
+   * Create a new resident with password hash
+   * Used during registration
+   */
+  public createResidentWithAuth(residentData: Omit<ResidentProfile, 'id' | 'createdAt' | 'accessToken' | 'tokensGenerated' | 'lastActiveAt'>, passwordHash: string): ResidentProfile {
+    const nowDate = new Date();
+    const nowISO = nowDate.toISOString();
+    const residentId = `RES-${Date.now()}`;
+
+    const newResident: ResidentProfile = {
+      id: residentId,
+      ...residentData,
+      createdAt: nowISO,
+      accessToken: `TOK-${nowDate.getTime().toString().slice(-6)}`,
+      tokensGenerated: 0,
+      lastActiveAt: nowISO,
+    };
+
+    this.residentProfiles.push(newResident);
+    this.residentPasswords.set(residentId, passwordHash);
+
+    return newResident;
+  }
+
+  /**
+   * Verify a resident's password
+   */
+  public verifyResidentPassword(residentId: string, password: string): boolean {
+    const hashedPassword = this.residentPasswords.get(residentId);
+    if (!hashedPassword) return false;
+
+    // In production, use proper password verification (bcrypt.compare)
+    return hashPassword(password) === hashedPassword;
+  }
+
+  /**
+   * Get resident by ID
+   */
+  public getResidentById(residentId: string): ResidentProfile | undefined {
+    return this.residentProfiles.find(r => r.id === residentId);
+  }
+
+  /**
+   * Update resident's last active timestamp
+   */
+  public updateResidentLastActive(residentId: string): void {
+    const resident = this.getResidentById(residentId);
+    if (resident) {
+      resident.lastActiveAt = new Date().toISOString();
+    }
+  }
+
+  /**
+   * Find resident by flat number and phone
+   * Used during login
+   */
+  public getResidentByFlatAndPhone(flatNumber: string, phone: string): ResidentProfile | undefined {
+    return this.residentProfiles.find(
+      r => r.flatNumber === flatNumber && r.phone === phone
+    );
   }
 }
 

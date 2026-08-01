@@ -103,6 +103,17 @@ export const ResidentChat: React.FC<ResidentChatProps> = ({ onTicketSelect, isDa
       if (data.ticketCreated) {
         onRefreshTickets();
       }
+    } catch (err) {
+      console.error('Failed to send chat message:', err);
+      const errorMsg: ChatMessage = {
+        id: `MSG-${Date.now() + 2}`,
+        sender: 'agent',
+        text: 'Aapki request process ho gayi hai. Ticket details dashboard mein update ho gayi h.',
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      };
+      setMessages(prev => [...prev, errorMsg]);
+    } finally {
+      setIsLoading(false);
 
       // REAL Text-to-Speech for AI response
       if ('speechSynthesis' in window) {
@@ -122,17 +133,6 @@ export const ResidentChat: React.FC<ResidentChatProps> = ({ onTicketSelect, isDa
           // Don't fail the whole operation if TTS fails
         }
       }
-    } catch (err) {
-      console.error('Failed to send chat message:', err);
-      const errorMsg: ChatMessage = {
-        id: `MSG-${Date.now() + 2}`,
-        sender: 'agent',
-        text: 'Aapki request process ho gayi hai. Ticket details dashboard mein update ho gayi h.',
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      };
-      setMessages(prev => [...prev, errorMsg]);
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -150,17 +150,17 @@ export const ResidentChat: React.FC<ResidentChatProps> = ({ onTicketSelect, isDa
   const toggleRecording = () => {
     if (!isRecording) {
       // REAL Speech Recognition
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      if (SpeechRecognition) {
+      if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         const recognition = new SpeechRecognition();
         recognition.lang = 'hi-IN'; // Hindi-India, also understands Hinglish
         recognition.interimResults = false;
-        (recognition as any).maxAlternatives = 1;
+        recognition.maxAlternatives = 1;
 
         setIsRecording(true);
         recognition.start();
 
-        recognition.onresult = (event: any) => {
+        recognition.onresult = (event) => {
           const transcript = event.results[0][0].transcript;
           setInputMessage(transcript);
           setIsRecording(false);
@@ -169,7 +169,7 @@ export const ResidentChat: React.FC<ResidentChatProps> = ({ onTicketSelect, isDa
           handleSendMessage();
         };
 
-        recognition.onerror = (event: any) => {
+        recognition.onerror = (event) => {
           console.error('Speech recognition error:', event.error);
           setIsRecording(false);
           setInputMessage('Voice input failed. Try typing instead.');
