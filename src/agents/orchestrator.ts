@@ -1,7 +1,20 @@
 import { GoogleGenAI } from '@google/genai';
 import { maintenanceToolDeclarations, executeToolCall } from '../tools/maintenanceTools';
-import { dbStore } from '../database/store';
 import { ChatMessage, AgentThoughtStep, Ticket, IssueCategory, UrgencyLevel } from '../types';
+
+export interface AgentResponse {
+  replyText: string;
+  thoughtSteps: AgentThoughtStep[];
+  ticketCreated?: Ticket;
+  /**
+   * Which engine produced this reply. 'fallback' means the Gemini call was
+   * skipped or failed and the deterministic keyword engine answered instead —
+   * the two are indistinguishable from the reply text alone.
+   */
+  source: 'gemini' | 'fallback';
+  /** Why the fallback ran, when it did. */
+  fallbackReason?: string;
+}
 
 let aiClient: GoogleGenAI | null = null;
 
@@ -27,9 +40,12 @@ export async function processResidentMessage(
   userFlat: string = 'B-402',
   userName: string = 'Vikram Mehta',
   attachedImages: string[] = []
-): Promise<{ replyText: string; thoughtSteps: AgentThoughtStep[]; ticketCreated?: Ticket }> {
+): Promise<AgentResponse> {
   const thoughtSteps: AgentThoughtStep[] = [];
   const ai = getAiClient();
+  let fallbackReason: string | undefined = ai
+    ? undefined
+    : 'GEMINI_API_KEY is not configured';
 
   thoughtSteps.push({
     agentName: 'Intake Agent',
@@ -46,10 +62,10 @@ Attached images count: ${attachedImages.length}.
 Your system directive as SocietyOps AI:
 1. Act as Intake Agent, Dispatcher Agent, and Communication Agent in sequence.
 2. If this is a new maintenance issue or complaint:
-   - Extract Flat Number (default to "${userFlat}" if unspecified), Issue Category (Plumbing, Electrical, Lift & Elevator, Carpentry & Locks, AC & Appliances, Cleaning & Pest, Security & Intercom, General Repairs), Urgency (High/Medium/Low), and Description.
-   - Use function calling tool "create_ticket" to create the ticket.
-   - Then call "assign_vendor" or let auto-dispatch handle it.
-   - Then call "notify_resident".
+    - Extract Flat Number (default to "${userFlat}" if unspecified), Issue Category (Plumbing, Electrical, Lift & Elevator, Carpentry & Locks, AC & Appliances, Cleaning & Pest, Security & Intercom, General Repairs), Urgency (High/Medium/Low), and Description.
+    - Use function calling tool "create_ticket" to create the ticket.
+    - Then call "assign_vendor" or let auto-dispatch handle it.
+    - Then call "notify_resident".
 3. Reply politely in warm, clear Hinglish or English matching the user's tone. Keep reply concise, mentioning Ticket ID, Assigned Vendor, and ETA if ticket was created.`,
         config: {
           systemInstruction: `You are SocietyOps AI, an autonomous Maintenance Coordination Agent for Indian Housing Societies & RWAs. You process resident complaints in Hinglish or English, extract structured details, invoke tools to create tickets and assign vendors, and reply warmly and professionally.`,
@@ -66,7 +82,6 @@ Your system directive as SocietyOps AI:
             thoughtSteps.push({ agentName: 'Communication Agent', explanation: 'Skipping invalid function call from AI response.' });
             continue;
           }
-          // Some function-calling responses encode args as a JSON string — normalize to an object.
           let parsedArgs: any = (call as any).args ?? {};
           if (typeof parsedArgs === 'string') {
             try {
@@ -78,7 +93,7 @@ Your system directive as SocietyOps AI:
 
           let toolResult: any;
           try {
-            toolResult = executeToolCall((call as any).name, parsedArgs);
+            toolResult = await executeToolCall((call as any).name, parsedArgs);
           } catch (e) {
             thoughtSteps.push({ agentName: 'Communication Agent', explanation: `Tool execution failed: ${(e as Error).message}` });
             continue;
@@ -129,7 +144,7 @@ Your system directive as SocietyOps AI:
         if (ticketCreated) {
           const vendorName = ticketCreated.assignedVendorName || 'Society Vendor Team';
           const eta = ticketCreated.estimatedEta || '30 mins';
-          replyText = `Namaste ${userName} ji! Aapki complaint register kar li gayi hai. 
+          replyText = `Namaste ${userName} ji! Aapki complaint register kar li gayi hai.
 
 **Ticket ID**: #${ticketCreated.id}
 **Flat**: ${ticketCreated.flatNumber}
@@ -148,26 +163,26 @@ Aap live updates app mein dekh sakte hain. Hamari team issue complete karke aapk
         explanation: 'Formatted resident notification and confirmed status update.',
       });
 
-      return { replyText, thoughtSteps, ticketCreated };
+      return { replyText, thoughtSteps, ticketCreated, source: 'gemini' };
     } catch (err) {
-      console.warn('Gemini API call warning, using agent fallback engine:', err);
+      fallbackReason = `Gemini request failed: ${(err as Error).message}`;
+      console.warn('Gemini API call failed, using deterministic fallback engine:', err);
     }
   }
 
-  // --- FALLBACK DETERMINISTIC MULTI-AGENT ENGINE ---
-  return runDeterministicAgentFallback(userText, userFlat, userName, attachedImages, thoughtSteps);
+  return runDeterministicAgentFallback(userText, userFlat, userName, attachedImages, thoughtSteps, fallbackReason);
 }
 
-function runDeterministicAgentFallback(
+async function runDeterministicAgentFallback(
   userText: string,
   userFlat: string,
   userName: string,
   attachedImages: string[],
-  thoughtSteps: AgentThoughtStep[]
-): { replyText: string; thoughtSteps: AgentThoughtStep[]; ticketCreated?: Ticket } {
+  thoughtSteps: AgentThoughtStep[],
+  fallbackReason?: string
+): Promise<AgentResponse> {
   const lower = userText.toLowerCase();
 
-  // 1. Determine Category
   let category: IssueCategory = 'General Repairs';
   if (lower.includes('water') || lower.includes('leak') || lower.includes('tap') || lower.includes('flush') || lower.includes('drain') || lower.includes('pipe') || lower.includes('paani')) {
     category = 'Plumbing';
@@ -185,7 +200,6 @@ function runDeterministicAgentFallback(
     category = 'Security & Intercom';
   }
 
-  // 2. Determine Urgency
   let urgency: UrgencyLevel = 'Medium';
   if (lower.includes('urgent') || lower.includes('stuck') || lower.includes('fire') || lower.includes('smoke') || lower.includes('sewage') || lower.includes('flooding') || lower.includes('gas') || lower.includes('emergency')) {
     urgency = 'High';
@@ -193,12 +207,10 @@ function runDeterministicAgentFallback(
     urgency = 'Low';
   }
 
-  // 3. Extract Flat Number if in text
   const flatMatch = userText.match(/([A-D]|tower\s*[A-D]?)[- ]?([0-9]{3,4})/i);
   const detectedFlat = flatMatch ? flatMatch[0].toUpperCase() : userFlat;
 
-  // Execute create_ticket
-  const result = executeToolCall('create_ticket', {
+  const result = await executeToolCall('create_ticket', {
     flatNumber: detectedFlat,
     residentName: userName,
     residentPhone: '+91 98210 99887',
@@ -206,7 +218,7 @@ function runDeterministicAgentFallback(
     description: userText,
     urgency: urgency,
     images: attachedImages,
-  });
+  }) as { success: boolean; ticket: Ticket; assignedVendor?: any };
 
   if (!result || !result.ticket) {
     throw new Error('create_ticket tool failed to return a ticket');
@@ -253,5 +265,5 @@ function runDeterministicAgentFallback(
 
 Hamare Dispatcher Agent ne technician ko notify kar diya hai. Status live track karne ke liye dashboard check karein!`;
 
-  return { replyText, thoughtSteps, ticketCreated };
+  return { replyText, thoughtSteps, ticketCreated, source: 'fallback', fallbackReason };
 }

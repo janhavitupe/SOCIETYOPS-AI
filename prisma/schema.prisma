@@ -1,0 +1,155 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Ticket {
+  id                 String    @id
+  flatNumber         String
+  residentName       String
+  residentPhone      String
+  issueCategory      String
+  description        String
+  urgency            String
+  status             String
+  assignedVendorId   String?
+  assignedVendorName String?
+  assignedVendorPhone String?
+  estimatedEta       String?
+  images             String[]
+  societyName        String
+  lastFollowupAt     String?
+  escalationReason   String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  resolvedAt         DateTime?
+  deletedAt          DateTime?
+
+  residentId         String?
+  resident           ResidentProfile? @relation(fields: [residentId], references: [id])
+  vendorId           String?
+  vendor             Vendor?          @relation(fields: [vendorId], references: [id])
+
+  timeline           TimelineEvent[]
+  notifications      NotificationLog[]
+  agentLogs          AgentActivityLog[]
+
+  @@index([flatNumber])
+  @@index([status])
+  @@index([residentId])
+  @@index([vendorId])
+}
+
+model TimelineEvent {
+  id        String   @id @default(cuid())
+  timestamp String
+  title     String
+  description String
+  actor     String
+  type      String
+  ticketId  String
+  ticket    Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId])
+}
+
+model Vendor {
+  id                String    @id
+  name              String
+  category          String
+  rating            Float
+  availability      String
+  phone             String
+  avgResolutionTime String
+  completedJobs     Int
+  activeJobsCount   Int       @default(0)
+  skills            String[]
+  societyName       String
+  avatarUrl         String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+
+  tickets           Ticket[]
+
+  @@index([category])
+}
+
+model NotificationLog {
+  id            String   @id @default(cuid())
+  ticketId      String
+  ticket        Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  recipientType String
+  recipientName String
+  phone         String
+  message       String
+  channel       String
+  timestamp     String
+  language      String
+  status        String
+  deletedAt     DateTime?
+
+  @@index([ticketId])
+}
+
+model AgentActivityLog {
+  id        String   @id @default(cuid())
+  agentName String
+  action    String
+  details   String
+  timestamp String
+  ticketId  String?
+  ticket    Ticket?  @relation(fields: [ticketId], references: [id], onDelete: SetNull)
+  deletedAt DateTime?
+
+  @@index([ticketId])
+}
+
+model SocietyProfile {
+  id                 String   @id
+  societyName        String
+  address            String
+  tagline            String
+  introText          String
+  maintenanceContact String
+  maintenancePhone   String
+  maintenanceEmail   String
+  highlights         String[]
+  lastUpdatedBy      String
+  updatedAt          String
+}
+
+model ResidentProfile {
+  id             String   @id @default(cuid())
+  name           String
+  flatNumber     String
+  role           String
+  phone          String
+  email          String?
+  status         String   @default("active")
+  accessToken    String
+  tokensGenerated Int     @default(0)
+  lastActiveAt   String?
+  createdAt      String
+  deletedAt      DateTime?
+
+  passwordHashes ResidentPassword[]
+
+  tickets        Ticket[]
+
+  @@unique([flatNumber, phone])
+  @@index([flatNumber])
+}
+
+model ResidentPassword {
+  id         String   @id @default(cuid())
+  residentId String
+  hash       String
+  createdAt  DateTime @default(now())
+  resident   ResidentProfile @relation(fields: [residentId], references: [id], onDelete: Cascade)
+
+  @@index([residentId])
+}

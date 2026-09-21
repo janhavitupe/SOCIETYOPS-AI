@@ -6,3 +6,6 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Kilo Code extension workspace (contains node_modules)
+.kilo/
