@@ -8,13 +8,20 @@ import jwt from 'jsonwebtoken';
 
   // -------------------------------------------------
 
-  export const JWT_SECRET: string =
+  // This value is published in the repository and the README, so it is safe only
+  // for local development.
+  const DEV_JWT_SECRET = 'dev-secret-change-me-in-production-and-keep-it-long-at-least-32-chars';
 
-    process.env.JWT_SECRET ||
+  export const JWT_SECRET: string = process.env.JWT_SECRET || DEV_JWT_SECRET;
 
-    // In production you MUST set JWT_SECRET; the fallback is only to keep the app running while you develop.
-
-    'dev-secret-change-me-in-production-and-keep-it-long-at-least-32-chars';
+  // Signing production tokens with the published fallback would let anyone mint a
+  // valid admin token, so refuse to start rather than start insecurely.
+  if (process.env.NODE_ENV === 'production' && JWT_SECRET === DEV_JWT_SECRET) {
+    throw new Error(
+      'JWT_SECRET must be set to a strong random value when NODE_ENV=production; ' +
+      'the development fallback is public and must not be used.'
+    );
+  }
 
 
 
@@ -88,6 +95,12 @@ import jwt from 'jsonwebtoken';
 
   // -------------------------------------------------
 
+  /**
+   * Roles as they are actually stored by the seed and the registration route.
+   * The middleware and the UI must agree with these exact strings.
+   */
+  export type UserRole = 'resident' | 'maintenance' | 'admin';
+
   export interface JwtPayload {
 
     id: string;
@@ -96,7 +109,7 @@ import jwt from 'jsonwebtoken';
 
     flatNumber: string;
 
-    role: 'resident' | 'facility_manager' | 'admin';
+    role: UserRole;
 
     iat?: number;
 

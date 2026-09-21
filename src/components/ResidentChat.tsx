@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, Image as ImageIcon, Mic, Paperclip, Bot, User, CheckCheck, ChevronDown, ChevronUp, Clock, AlertTriangle, ShieldCheck, Sparkles, X, Wrench, PhoneCall } from 'lucide-react';
 import { ChatMessage, Ticket, AgentThoughtStep } from '../types';
+import { api } from '../lib/api';
 
 interface ResidentChatProps {
   onTicketSelect: (ticket: Ticket) => void;
@@ -77,18 +78,15 @@ export const ResidentChat: React.FC<ResidentChatProps> = ({ onTicketSelect, isDa
     setIsLoading(true);
 
     try {
-      const response = await fetch('/api/chat', {
+      // flatNumber and residentName are no longer sent: the server takes the
+      // caller's identity from their token, so a client cannot post as someone else.
+      const data = await api('/api/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           text,
-          flatNumber: selectedFlat,
-          residentName,
           images: currentImage ? [currentImage] : [],
         }),
       });
-
-      const data = await response.json();
 
       const aiMsg: ChatMessage = {
         id: `MSG-${Date.now() + 1}`,

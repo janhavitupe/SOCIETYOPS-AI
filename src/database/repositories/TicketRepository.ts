@@ -168,8 +168,12 @@ export class TicketRepository {
     return toTicket(updated);
   }
 
-  async search(query: string, category?: string, urgency?: string, status?: string): Promise<any[]> {
+  async search(query: string, category?: string, urgency?: string, status?: string, flatNumber?: string): Promise<any[]> {
     const where: any = { deletedAt: null };
+
+    // Restricts the result to one flat. Callers pass this to stop a resident
+    // reading other flats' tickets; it is ANDed with any keyword filter.
+    if (flatNumber) where.flatNumber = flatNumber;
 
     if (query) {
       where.OR = [

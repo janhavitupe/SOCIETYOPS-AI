@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { verifyToken } from '../auth/authUtils';
+import { api, getStoredToken, getStoredUser, setStoredAuth, clearStoredAuth } from '../lib/api';
 
 interface AuthContextType {
   user: any | null;
@@ -7,6 +7,8 @@ interface AuthContextType {
   login: (token: string, user: any) => void;
   logout: () => void;
   isAuthenticated: boolean;
+  /** True until the stored token has been checked against the server. */
+  isLoading: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -22,42 +24,69 @@ export const useAuth = () => {
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<any | null>(null);
   const [token, setToken] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Check for existing token on load
+  // Validate any stored token against the server on load.
+  //
+  // This used to call verifyToken() from src/auth/authUtils, which pulled
+  // jsonwebtoken, bcryptjs and JWT_SECRET into the browser bundle. A signature
+  // check only means something where the secret lives, so the server is asked
+  // instead and its answer is authoritative.
   useEffect(() => {
-    const storedToken = localStorage.getItem('societyops_token');
-    const storedUser = localStorage.getItem('societyops_user');
+    const storedToken = getStoredToken();
 
-    if (storedToken && storedUser) {
-      const verifiedUser = verifyToken(storedToken);
-      if (verifiedUser) {
-        setToken(storedToken);
-        setUser(JSON.parse(storedUser));
-      } else {
-        // Token invalid or expired, clear storage
-        localStorage.removeItem('societyops_token');
-        localStorage.removeItem('societyops_user');
-      }
+    if (!storedToken) {
+      clearStoredAuth();
+      setIsLoading(false);
+      return;
     }
+
+    // Show the cached profile immediately so the UI does not flash, then
+    // replace it with whatever the server confirms.
+    setToken(storedToken);
+    setUser(getStoredUser());
+
+    let cancelled = false;
+
+    api<{ user: any }>('/api/auth/me')
+      .then(({ user: verifiedUser }) => {
+        if (cancelled) return;
+        setUser(verifiedUser);
+        setStoredAuth(storedToken, verifiedUser);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        // Expired, tampered with, or the account is gone.
+        clearStoredAuth();
+        setToken(null);
+        setUser(null);
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const login = (newToken: string, newUser: any) => {
     setToken(newToken);
     setUser(newUser);
-    localStorage.setItem('societyops_token', newToken);
-    localStorage.setItem('societyops_user', JSON.stringify(newUser));
+    setStoredAuth(newToken, newUser);
   };
 
   const logout = () => {
     setToken(null);
     setUser(null);
-    localStorage.removeItem('societyops_token');
-    localStorage.removeItem('societyops_user');
+    clearStoredAuth();
     window.location.reload(); // Reload to clear any cached data
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, login, logout, isAuthenticated: !!token }}>
+    <AuthContext.Provider
+      value={{ user, token, login, logout, isAuthenticated: !!token, isLoading }}
+    >
       {children}
     </AuthContext.Provider>
   );

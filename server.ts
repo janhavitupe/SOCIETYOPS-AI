@@ -15,6 +15,14 @@ import { createServer as createViteServer } from 'vite';
 import { prisma } from './src/database/prisma';
 import { ticketRepo, vendorRepo, notificationRepo, agentLogRepo, societyProfileRepo, residentProfileRepo, authRepo } from './src/database/repositories';
 import authRoutes from "./src/auth/authRoutes";
+import {
+  authenticateToken,
+  requireAuth,
+  requireManager,
+  requireAdmin,
+  canAccessAllTickets,
+  canAccessFlat,
+} from './src/auth/authMiddleware';
 import { processResidentMessage } from './src/agents/orchestrator';
 
 const logger = winston.createLogger({
@@ -127,6 +135,10 @@ async function startServer() {
   app.use(hpp({ whitelist: ['query', 'category', 'urgency', 'status'] }));
   app.use(morganMiddleware);
 
+  // Populates req.user for every API route. The per-route guards below decide
+  // what actually requires a session; this only decodes the token.
+  app.use('/api', authenticateToken);
+
   app.use('/api/auth/register', authLimiter);
   app.use('/api/auth/login', authLimiter);
   app.use('/api/auth', authRoutes);
@@ -153,46 +165,62 @@ async function startServer() {
     });
   });
 
-  app.get('/api/tickets', (req, res) => {
+  app.get('/api/tickets', requireAuth, route(async (req, res) => {
     const { query, category, urgency, status } = req.query;
-    ticketRepo.search(
+    const user = req.user!;
+
+    // Managers see the whole society; residents are scoped to their own flat in
+    // the query itself, so no other flat's tickets are ever loaded.
+    const flatScope = canAccessAllTickets(user) ? undefined : user.flatNumber;
+
+    const tickets = await ticketRepo.search(
       (query as string) || '',
       (category as string) || '',
       (urgency as string) || '',
-      (status as string) || ''
-    ).then(tickets => {
-      logger.info('Tickets listed', { count: tickets.length, query, category, urgency, status });
-      res.json({ count: tickets.length, tickets });
-    }).catch((err) => {
-      logger.error('Failed to list tickets', { error: err.message });
-      res.status(500).json({ error: 'Internal server error' });
-    });
-  });
+      (status as string) || '',
+      flatScope
+    );
 
-  app.get('/api/tickets/:id', route(async (req, res) => {
+    logger.info('Tickets listed', { count: tickets.length, role: user.role, flatScope, query, category, urgency, status });
+    res.json({ count: tickets.length, tickets });
+  }));
+
+  app.get('/api/tickets/:id', requireAuth, route(async (req, res) => {
     const ticket = await ticketRepo.findById(req.params.id);
     if (!ticket) {
       logger.warn('Ticket not found', { ticketId: req.params.id });
       return res.status(404).json({ error: 'Ticket not found' });
     }
+    if (!canAccessFlat(req.user!, ticket.flatNumber)) {
+      logger.warn('Ticket access denied', { ticketId: req.params.id, userId: req.user!.id, role: req.user!.role });
+      return res.status(403).json({ error: 'You do not have access to this ticket' });
+    }
     logger.info('Ticket retrieved', { ticketId: req.params.id });
     res.json(ticket);
   }));
 
-  app.post('/api/tickets', route(async (req, res) => {
+  app.post('/api/tickets', requireAuth, route(async (req, res) => {
     const { flatNumber, residentName, residentPhone, issueCategory, description, urgency, images } = req.body;
     if (!description || !issueCategory) {
       logger.warn('Ticket creation failed - missing fields', { description: !!description, issueCategory: !!issueCategory });
       return res.status(400).json({ error: 'Missing required ticket fields' });
     }
+
+    // Identity comes from the token, not the body: a resident may only file
+    // against their own flat. Managers may file on someone's behalf, so the
+    // body's flat and name are honoured only for them.
+    const user = req.user!;
+    const isManager = canAccessAllTickets(user);
+
     let ticket = await ticketRepo.create({
-      flatNumber: flatNumber || 'B-402',
-      residentName: residentName || 'Resident',
+      flatNumber: isManager ? (flatNumber || user.flatNumber) : user.flatNumber,
+      residentName: isManager ? (residentName || user.name) : user.name,
       residentPhone: residentPhone || '+91 98000 00000',
       issueCategory,
       description,
       urgency: urgency || 'Medium',
       images: images || [],
+      residentId: isManager ? undefined : user.id,
     });
 
     const bestVendor = await vendorRepo.findBestForCategory(ticket.issueCategory);
@@ -206,8 +234,20 @@ async function startServer() {
     res.status(201).json(ticket);
   }));
 
-  app.patch('/api/tickets/:id', route(async (req, res) => {
-    const updated = await ticketRepo.update(req.params.id, req.body);
+  app.patch('/api/tickets/:id', requireManager, route(async (req, res) => {
+    // Whitelisted. req.body used to be spread straight into the Prisma update,
+    // which let a caller write any column on the row, including its id and
+    // timestamps.
+    const updates: Record<string, unknown> = {};
+    for (const field of ['status', 'urgency', 'description', 'issueCategory', 'estimatedEta'] as const) {
+      if (req.body[field] !== undefined) updates[field] = req.body[field];
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ error: 'No updatable fields provided' });
+    }
+
+    const updated = await ticketRepo.update(req.params.id, updates);
     if (!updated) {
       logger.warn('Ticket update failed - not found', { ticketId: req.params.id });
       return res.status(404).json({ error: 'Ticket not found' });
@@ -216,7 +256,7 @@ async function startServer() {
     res.json(updated);
   }));
 
-  app.post('/api/tickets/:id/assign', route(async (req, res) => {
+  app.post('/api/tickets/:id/assign', requireManager, route(async (req, res) => {
     const { vendorId, estimatedEta } = req.body;
     if (!vendorId) {
       logger.warn('Vendor assignment failed - missing vendorId', { ticketId: req.params.id });
@@ -231,7 +271,18 @@ async function startServer() {
     res.json(ticket);
   }));
 
-  app.post('/api/tickets/:id/escalate', route(async (req, res) => {
+  // Residents may escalate their own stuck ticket; managers may escalate any.
+  app.post('/api/tickets/:id/escalate', requireAuth, route(async (req, res) => {
+    const existing = await ticketRepo.findById(req.params.id);
+    if (!existing) {
+      logger.warn('Escalation failed - ticket not found', { ticketId: req.params.id });
+      return res.status(404).json({ error: 'Ticket not found' });
+    }
+    if (!canAccessFlat(req.user!, existing.flatNumber)) {
+      logger.warn('Escalation denied', { ticketId: req.params.id, userId: req.user!.id });
+      return res.status(403).json({ error: 'You do not have access to this ticket' });
+    }
+
     const { reason } = req.body;
     const ticket = await ticketRepo.escalateTicket(req.params.id, reason || 'Manual Manager Escalation');
     if (!ticket) {
@@ -242,7 +293,18 @@ async function startServer() {
     res.json(ticket);
   }));
 
-  app.post('/api/tickets/:id/close', route(async (req, res) => {
+  // Residents may close their own ticket once it is done; managers may close any.
+  app.post('/api/tickets/:id/close', requireAuth, route(async (req, res) => {
+    const existing = await ticketRepo.findById(req.params.id);
+    if (!existing) {
+      logger.warn('Close ticket failed - not found', { ticketId: req.params.id });
+      return res.status(404).json({ error: 'Ticket not found' });
+    }
+    if (!canAccessFlat(req.user!, existing.flatNumber)) {
+      logger.warn('Close denied', { ticketId: req.params.id, userId: req.user!.id });
+      return res.status(403).json({ error: 'You do not have access to this ticket' });
+    }
+
     const ticket = await ticketRepo.update(req.params.id, { status: 'Closed' });
     if (!ticket) {
       logger.warn('Close ticket failed - not found', { ticketId: req.params.id });
@@ -252,25 +314,26 @@ async function startServer() {
     res.json(ticket);
   }));
 
-  app.get('/api/vendors', route(async (req, res) => {
+  app.get('/api/vendors', requireAuth, route(async (req, res) => {
     const vendors = await vendorRepo.findAll();
     logger.info('Vendors listed', { count: vendors.length });
     res.json({ count: vendors.length, vendors });
   }));
 
-  app.get('/api/notifications', route(async (req, res) => {
+  // Dispatch logs carry other residents' names, phone numbers and messages.
+  app.get('/api/notifications', requireManager, route(async (req, res) => {
     const notifications = await notificationRepo.findAll();
     logger.info('Notifications listed', { count: notifications.length });
     res.json({ count: notifications.length, notifications });
   }));
 
-  app.get('/api/logs', route(async (req, res) => {
+  app.get('/api/logs', requireManager, route(async (req, res) => {
     const logs = await agentLogRepo.findAll();
     logger.info('Agent logs listed', { count: logs.length });
     res.json({ count: logs.length, logs });
   }));
 
-  app.get('/api/analytics', route(async (req, res) => {
+  app.get('/api/analytics', requireManager, route(async (req, res) => {
     const allTickets = await ticketRepo.findAll();
     const openTickets = allTickets.filter(t => t.status === 'Open' || t.status === 'Vendor Assigned' || t.status === 'In Progress').length;
     const inProgressTickets = allTickets.filter(t => t.status === 'Vendor Assigned' || t.status === 'In Progress').length;
@@ -307,25 +370,31 @@ async function startServer() {
     res.json(report);
   }));
 
-  app.get('/api/society-profile', route(async (req, res) => {
+  app.get('/api/society-profile', requireAuth, route(async (req, res) => {
     const profile = await societyProfileRepo.find();
     logger.info('Society profile retrieved');
     res.json(profile);
   }));
 
-  app.post('/api/society-profile', route(async (req, res) => {
+  app.post('/api/society-profile', requireManager, route(async (req, res) => {
     const profile = await societyProfileRepo.update(req.body);
     logger.info('Society profile updated');
     res.json(profile);
   }));
 
-  app.get('/api/resident-profiles', route(async (req, res) => {
+  app.get('/api/resident-profiles', requireManager, route(async (req, res) => {
     const residents = await residentProfileRepo.findAll();
-    logger.info('Resident profiles listed', { count: residents.length });
-    res.json({ count: residents.length, residents });
+
+    // accessToken is a standing credential for the account; it must never leave
+    // the server in a list response.
+    const safe = residents.map(({ accessToken, ...rest }) => rest);
+
+    logger.info('Resident profiles listed', { count: safe.length });
+    res.json({ count: safe.length, residents: safe });
   }));
 
-  app.post('/api/resident-profiles/:id/token', route(async (req, res) => {
+  // Issues a new standing access token, so this is admin-only.
+  app.post('/api/resident-profiles/:id/token', requireAdmin, route(async (req, res) => {
     const updated = await residentProfileRepo.issueAccessToken(req.params.id);
     if (!updated) {
       logger.warn('Token issuance failed - resident not found', { residentId: req.params.id });
@@ -335,7 +404,7 @@ async function startServer() {
     res.json(updated);
   }));
 
-  app.post('/api/followup/run', route(async (req, res) => {
+  app.post('/api/followup/run', requireManager, route(async (req, res) => {
     let remindersSent = 0;
     const escalatedTickets: any[] = [];
     const allTickets = await ticketRepo.findAll();
@@ -388,17 +457,20 @@ async function startServer() {
     });
   }));
 
-  app.post('/api/chat', route(async (req, res) => {
+  app.post('/api/chat', requireAuth, route(async (req, res) => {
     try {
-      const { text, flatNumber, residentName, images } = req.body;
+      const { text, images } = req.body;
       if (!text) {
         logger.warn('Chat request failed - missing text');
         return res.status(400).json({ error: 'Text prompt is required' });
       }
 
-      const result = await processResidentMessage(text, flatNumber, residentName, images);
+      // Identity comes from the token. The body used to supply flatNumber and
+      // residentName, which let any caller raise a ticket as any resident.
+      const user = req.user!;
+      const result = await processResidentMessage(text, user.flatNumber, user.name, images);
       logger.info('Chat message processed', {
-        flatNumber,
+        flatNumber: user.flatNumber,
         textLength: text.length,
         source: result.source,
         fallbackReason: result.fallbackReason,

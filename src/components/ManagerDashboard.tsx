@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Ticket, Vendor, AgentActivityLog, IssueCategory, UrgencyLevel, TicketStatus, SocietyProfile, ResidentProfile, DailyReport } from '../types';
+import { api } from '../lib/api';
 import { Wrench, Clock, CheckCircle2, AlertTriangle, Search, Filter, ShieldAlert, ArrowUpRight, UserCheck, RefreshCw, Zap, Eye, MoreHorizontal, ChevronRight, BarChart3, Radio, Building2, KeyRound, Sparkles, Users2 } from 'lucide-react';
 
 interface ManagerDashboardProps {
@@ -83,14 +84,11 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
     if (!societyProfile) return;
     setIsSavingProfile(true);
     try {
-      const res = await fetch('/api/society-profile', {
+      await api('/api/society-profile', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...societyProfile, introText, lastUpdatedBy: 'Maintenance Team' }),
       });
-      if (res.ok) {
-        await onRefresh();
-      }
+      await onRefresh();
     } catch (err) {
       console.error('Failed to save society profile:', err);
     } finally {
@@ -100,7 +98,7 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
 
   const handleIssueToken = async (profileId: string) => {
     try {
-      await fetch(`/api/resident-profiles/${profileId}/token`, { method: 'POST' });
+      await api(`/api/resident-profiles/${profileId}/token`, { method: 'POST' });
       await onRefresh();
     } catch (err) {
       console.error('Failed to issue token:', err);

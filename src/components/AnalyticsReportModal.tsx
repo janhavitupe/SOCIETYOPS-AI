@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { DailyReport } from '../types';
+import { api } from '../lib/api';
 import { X, BarChart2, CheckCircle2, Clock, AlertTriangle, TrendingUp, Sparkles, ShieldCheck } from 'lucide-react';
 
 interface AnalyticsReportModalProps {
@@ -21,9 +22,7 @@ export const AnalyticsReportModal: React.FC<AnalyticsReportModalProps> = ({ isOp
   const fetchReport = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/analytics');
-      const data = await res.json();
-      setReport(data);
+      setReport(await api('/api/analytics'));
     } catch (err) {
       console.error('Failed to fetch analytics report:', err);
     } finally {
