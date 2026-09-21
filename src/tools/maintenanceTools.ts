@@ -1,8 +1,7 @@
-import { dbStore } from '../database/store';
+import { ticketRepo, vendorRepo, notificationRepo, agentLogRepo } from '../database/repositories';
 import { FunctionDeclaration, Type } from '@google/genai';
 import { IssueCategory, UrgencyLevel, TicketStatus } from '../types';
 
-// Tool Declarations for Gemini API
 export const maintenanceToolDeclarations: FunctionDeclaration[] = [
   {
     name: 'create_ticket',
@@ -154,113 +153,154 @@ export const maintenanceToolDeclarations: FunctionDeclaration[] = [
   },
 ];
 
-// Tool Implementation Handlers
 export function executeToolCall(name: string, args: any) {
   switch (name) {
     case 'create_ticket': {
-      const ticket = dbStore.createTicket({
+      return ticketRepo.create({
         flatNumber: args.flatNumber,
         residentName: args.residentName || 'Resident',
         residentPhone: args.residentPhone || '+91 98000 00000',
         issueCategory: (args.issueCategory as IssueCategory) || 'General Repairs',
         description: args.description,
         urgency: (args.urgency as UrgencyLevel) || 'Medium',
+        images: args.images || [],
+      }).then(async (ticket) => {
+        const bestVendor = await vendorRepo.findBestForCategory(ticket.issueCategory);
+        let assignedVendorInfo = null;
+        if (bestVendor) {
+          await ticketRepo.assignVendor(ticket.id, bestVendor.id, bestVendor.avgResolutionTime);
+          assignedVendorInfo = bestVendor;
+        }
+        return {
+          success: true,
+          ticket,
+          assignedVendor: assignedVendorInfo,
+          message: `Ticket #${ticket.id} created for Flat ${ticket.flatNumber}.${assignedVendorInfo ? ` Automatically dispatched vendor ${assignedVendorInfo.name} (${assignedVendorInfo.rating} stars).` : ''}`,
+        };
       });
-
-      // Auto assign best vendor
-      const bestVendor = dbStore.findBestVendorForCategory(ticket.issueCategory);
-      let assignedVendorInfo = null;
-      if (bestVendor) {
-        dbStore.assignVendor(ticket.id, bestVendor.id, bestVendor.avgResolutionTime);
-        assignedVendorInfo = bestVendor;
-      }
-
-      return {
-        success: true,
-        ticket,
-        assignedVendor: assignedVendorInfo,
-        message: `Ticket #${ticket.id} created for Flat ${ticket.flatNumber}.${assignedVendorInfo ? ` Automatically dispatched vendor ${assignedVendorInfo.name} (${assignedVendorInfo.rating} stars).` : ''}`,
-      };
     }
 
     case 'update_ticket': {
-      const updated = dbStore.updateTicket(args.ticketId, {
+      return ticketRepo.update(args.ticketId, {
         status: args.status as TicketStatus,
         description: args.description,
         urgency: args.urgency as UrgencyLevel,
-      });
-      return { success: !!updated, ticket: updated };
+      }).then(updated => ({ success: !!updated, ticket: updated }));
     }
 
     case 'get_ticket': {
-      const ticket = dbStore.getTicketById(args.ticketId);
-      return { success: !!ticket, ticket };
+      return ticketRepo.findById(args.ticketId).then(ticket => ({ success: !!ticket, ticket }));
     }
 
     case 'search_ticket': {
-      const tickets = dbStore.searchTickets(args.query || '', args.category, args.urgency, args.status);
-      return { success: true, count: tickets.length, tickets };
+      return ticketRepo.search(args.query || '', args.category, args.urgency, args.status).then(tickets => ({ success: true, count: tickets.length, tickets }));
     }
 
     case 'assign_vendor': {
-      const ticket = dbStore.assignVendor(args.ticketId, args.vendorId, args.estimatedEta || '30 mins');
-      return { success: !!ticket, ticket };
+      return ticketRepo.assignVendor(args.ticketId, args.vendorId, args.estimatedEta || '30 mins').then(ticket => ({ success: !!ticket, ticket }));
     }
 
     case 'get_vendors': {
-      let vendors = dbStore.getVendors();
-      if (args.category) {
-        vendors = vendors.filter(v => v.category === args.category);
-      }
-      return { success: true, count: vendors.length, vendors };
+      return vendorRepo.findAll().then(vendors => {
+        if (args.category) {
+          return vendors.filter(v => v.category === args.category);
+        }
+        return vendors;
+      }).then(vendors => ({ success: true, count: vendors.length, vendors }));
     }
 
     case 'notify_resident': {
-      const notif = dbStore.notifyResident(args.ticketId, args.message);
-      return { success: !!notif, notification: notif };
+      return notificationRepo.create({
+        ticketId: args.ticketId,
+        recipientType: 'resident',
+        recipientName: '',
+        phone: '',
+        message: args.message,
+      }).then(notif => ({ success: !!notif, notification: notif }));
     }
 
     case 'notify_vendor': {
-      const notif = dbStore.notifyVendor(args.ticketId, args.vendorId, args.message);
-      return { success: !!notif, notification: notif };
+      return notificationRepo.create({
+        ticketId: args.ticketId,
+        recipientType: 'vendor',
+        recipientName: '',
+        phone: '',
+        message: args.message,
+      }).then(notif => ({ success: !!notif, notification: notif }));
     }
 
     case 'followup_vendor': {
-      const ticket = dbStore.getTicketById(args.ticketId);
-      if (!ticket) return { success: false, message: 'Ticket not found' };
-      if (!ticket.assignedVendorId) return { success: false, message: 'No vendor assigned to this ticket yet' };
+      return ticketRepo.findById(args.ticketId).then(async (ticket) => {
+        if (!ticket) return { success: false, message: 'Ticket not found' };
+        if (!ticket.assignedVendorId) return { success: false, message: 'No vendor assigned to this ticket yet' };
 
-      const notif = dbStore.notifyVendor(ticket.id, ticket.assignedVendorId, `Urgently follow up on ticket #${ticket.id} at Flat ${ticket.flatNumber}.`);
-      return { success: true, message: `Follow-up ping sent to ${ticket.assignedVendorName}`, notification: notif };
+        const notif = await notificationRepo.create({
+          ticketId: ticket.id,
+          recipientType: 'vendor',
+          recipientName: ticket.assignedVendorName || 'Vendor',
+          phone: ticket.assignedVendorPhone || '',
+          message: `Urgently follow up on ticket #${ticket.id} at Flat ${ticket.flatNumber}.`,
+        });
+        return { success: true, message: `Follow-up ping sent to ${ticket.assignedVendorName}`, notification: notif };
+      });
     }
 
     case 'escalate_ticket': {
-      const ticket = dbStore.escalateTicket(args.ticketId, args.reason);
-      return { success: !!ticket, ticket };
+      return ticketRepo.escalateTicket(args.ticketId, args.reason).then(ticket => ({ success: !!ticket, ticket }));
     }
 
     case 'close_ticket': {
-      const ticket = dbStore.updateTicket(args.ticketId, { status: 'Closed' });
-      if (ticket) {
-        ticket.timeline.push({
-          id: `TL-${Date.now()}`,
-          timestamp: new Date().toISOString(),
-          title: 'Ticket Closed',
-          description: `Ticket resolved & closed. Feedback: "${args.feedback || 'Satisfactory'}"`,
-          actor: 'Resident',
-          type: 'closed',
-        });
-        dbStore.notifyResident(ticket.id, `Dhanyawad! Ticket #${ticket.id} has been marked closed. Thank you for using SocietyOps AI.`);
-      }
-      return { success: !!ticket, ticket };
+      return ticketRepo.update(args.ticketId, { status: 'Closed' }).then(async (ticket) => {
+        if (ticket) {
+          await notificationRepo.create({
+            ticketId: ticket.id,
+            recipientType: 'resident',
+            recipientName: ticket.residentName,
+            phone: ticket.residentPhone,
+            message: `Dhanyawad! Ticket #${ticket.id} has been marked closed. Thank you for using SocietyOps AI.`,
+          });
+        }
+        return { success: !!ticket, ticket };
+      });
     }
 
     case 'generate_daily_report': {
-      const report = dbStore.generateAnalyticsReport();
-      return { success: true, report };
+      return ticketRepo.findAll().then(async (allTickets) => {
+        const openTickets = allTickets.filter(t => t.status === 'Open' || t.status === 'Vendor Assigned' || t.status === 'In Progress').length;
+        const inProgressTickets = allTickets.filter(t => t.status === 'Vendor Assigned' || t.status === 'In Progress').length;
+        const resolvedToday = allTickets.filter(t => t.status === 'Resolved' || t.status === 'Closed').length;
+        const escalatedCount = allTickets.filter(t => t.status === 'Escalated').length;
+        const slaAtRiskCount = allTickets.filter(t => t.urgency === 'High' && (t.status === 'Open' || t.status === 'Vendor Assigned')).length;
+
+        const catMap: Record<string, number> = {};
+        allTickets.forEach(t => { catMap[t.issueCategory] = (catMap[t.issueCategory] || 0) + 1; });
+        let topCat = 'Plumbing';
+        let maxCount = 0;
+        Object.entries(catMap).forEach(([cat, cnt]) => { if (cnt > maxCount) { maxCount = cnt; topCat = cat; } });
+
+        const report = {
+          date: new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }),
+          totalTickets: allTickets.length,
+          openTickets,
+          inProgressTickets,
+          resolvedToday,
+          escalatedCount,
+          avgResponseTimeMinutes: 18,
+          frequentCategory: topCat,
+          topPerformingVendor: 'Ramesh Kumar Plumber (4.9 stars)',
+          summaryText: `SocietyOps AI managed ${allTickets.length} total tickets with an average first-response speed of 18 minutes. ${resolvedToday} tickets successfully closed today. ${topCat} remains the most requested category.`,
+          recommendations: [
+            'Schedule preventive maintenance check for Tower B Elevator ARD battery',
+            'Stock extra master bathroom flush valves in RWA inventory',
+            'Add 1 backup Electrician vendor for weekend evening slots'
+          ],
+          slaAtRiskCount,
+        };
+        return { success: true, report };
+      });
     }
 
     default:
-      return { success: false, error: `Unknown tool name: ${name}` };
+      return Promise.resolve({ success: false, error: `Unknown tool name: ${name}` });
   }
 }

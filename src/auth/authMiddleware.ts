@@ -1,30 +1,28 @@
-import { Request, Response, NextFunction } from 'express';
-import { verifyToken } from './authUtils';
+ import { Request, Response, NextFunction } from 'express';
+  import { verifyToken, JwtPayload } from './authUtils'; // <-- updated import
 
-/**
- * Authentication middleware
- * Verifies JWT token from Authorization header
- * Attaches user info to req.user if valid
- */
-export function authenticateToken(req: Request, res: Response, next: NextFunction) {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+  export function authenticateToken(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ) {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
 
-  if (!token) {
-    // No token provided - not an error, middleware continues
-    // Individual endpoints can decide if auth is required
-    return next();
+    if (!token) {
+      // No token – let downstream handlers decide if auth is required.
+      return next();
+    }
+
+    const user = verifyToken(token);
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid or expired token' });
+    }
+
+    // Attach the decoded payload (typed as JwtPayload for IntelliSense)
+    req.user = user as JwtPayload;
+    next();
   }
-
-  const user = verifyToken(token);
-  if (!user) {
-    return res.status(401).json({ error: 'Invalid or expired token' });
-  }
-
-  // Attach user info to request object
-  req.user = user;
-  next();
-}
 
 /**
  * Middleware to require authentication
