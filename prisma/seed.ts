@@ -1,8 +1,8 @@
 import 'dotenv/config';
-import { PrismaClient } from '@prisma/client';
+// Reuses the configured client. Prisma 7 requires a driver adapter, so a bare
+// `new PrismaClient()` here fails at construction.
+import { prisma } from '../src/database/prisma';
 import { hashPassword } from '../src/auth/authUtils';
-
-const prisma = new PrismaClient();
 
 async function main() {
   const minAgo = (m: number) => new Date(Date.now() - m * 60000).toISOString();
@@ -234,10 +234,9 @@ async function main() {
         createdAt: t.timeline[0].timestamp,
         updatedAt: t.timeline[t.timeline.length - 1].timestamp,
         timeline: {
-          create: t.timeline.map((e) => ({
-            ...e,
-            ticketId: t.id,
-          })),
+          // No ticketId here: a nested create takes the foreign key from the
+          // parent row, and passing it explicitly is rejected as unknown.
+          create: t.timeline,
         },
       },
     });
