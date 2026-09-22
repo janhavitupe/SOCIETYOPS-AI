@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main, security-update]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    # The API tests run against a real PostgreSQL rather than a mock, because
+    # the bugs they guard against (flat scoping, id generation, soft deletes)
+    # only appear in the query layer.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: societyops
+          POSTGRES_PASSWORD: societyops_dev
+          POSTGRES_DB: societyops
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U societyops -d societyops"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://societyops:societyops_dev@localhost:5432/societyops?schema=public
+      JWT_SECRET: ci-only-secret-never-used-outside-this-runner-at-least-32-chars
+      NODE_OPTIONS: --max-old-space-size=4096
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Apply migrations
+        run: npx prisma migrate deploy
+
+      - name: Seed demo data
+        run: npx prisma db seed
+
+      - name: Typecheck
+        run: npm run lint
+
+      - name: Test
+        run: npm test

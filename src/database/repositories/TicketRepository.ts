@@ -49,9 +49,21 @@ export class TicketRepository {
     return ticket ? toTicket(ticket) : undefined;
   }
 
+  /**
+   * Draws the next ticket number from a Postgres sequence.
+   *
+   * Replaces a count-based scheme that raced under concurrent inserts and
+   * reissued numbers after a soft delete. The sequence is created by the
+   * ticket_number_sequence migration; Prisma has no way to model a standalone
+   * sequence in schema.prisma, so it lives in raw SQL.
+   */
+  private async nextTicketNumber(): Promise<string> {
+    const rows = await this.prisma.$queryRaw<{ nextval: bigint }[]>`SELECT nextval('ticket_number_seq')`;
+    return rows[0].nextval.toString();
+  }
+
   async create(data: TicketData): Promise<any> {
-    const nextNum = 1043 + (await this.prisma.ticket.count()) - 4;
-    const ticketId = `SOC-${nextNum}`;
+    const ticketId = `SOC-${await this.nextTicketNumber()}`;
     const now = new Date().toISOString();
 
     const ticket = await this.prisma.ticket.create({

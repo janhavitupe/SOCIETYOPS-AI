@@ -24,6 +24,7 @@ import {
   canAccessFlat,
 } from './src/auth/authMiddleware';
 import { processResidentMessage } from './src/agents/orchestrator';
+import { buildDailyReport } from './src/services/analytics';
 
 const logger = winston.createLogger({
   level: process.env.LOG_LEVEL || 'info',
@@ -64,31 +65,38 @@ const route = (handler: AsyncRouteHandler): RequestHandler => (req, res, next) =
   handler(req, res, next).catch(next);
 };
 
-async function startServer() {
+async function isPortFree(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const tester = net.createServer()
+      .once('error', () => resolve(false))
+      .once('listening', () => {
+        tester.close(() => resolve(true));
+      })
+      .listen(port, '0.0.0.0');
+  });
+}
+
+async function findAvailablePort(startPort: number, maxAttempts = 50): Promise<number> {
+  let port = startPort;
+  for (let i = 0; i < maxAttempts; i += 1) {
+    if (await isPortFree(port)) return port;
+    port += 1;
+  }
+  throw new Error(`No available port found starting at ${startPort}`);
+}
+
+/**
+ * Builds the Express app: middleware, routes and the terminal error handler.
+ *
+ * Separated from startServer so tests can mount the real app with supertest
+ * without binding a port or booting Vite. `attachFrontend` runs after the API
+ * routes and before the error handler, which is where the SPA middleware
+ * has to sit.
+ */
+export async function createApp(
+  opts: { attachFrontend?: (app: express.Application) => void | Promise<void> } = {}
+): Promise<express.Application> {
   const app = express();
-  const defaultPort = Number(process.env.PORT) || 3000;
-
-  async function isPortFree(port: number): Promise<boolean> {
-    return new Promise((resolve) => {
-      const tester = net.createServer()
-        .once('error', () => resolve(false))
-        .once('listening', () => {
-          tester.close(() => resolve(true));
-        })
-        .listen(port, '0.0.0.0');
-    });
-  }
-
-  async function findAvailablePort(startPort: number, maxAttempts = 50): Promise<number> {
-    let port = startPort;
-    for (let i = 0; i < maxAttempts; i += 1) {
-      if (await isPortFree(port)) return port;
-      port += 1;
-    }
-    throw new Error(`No available port found starting at ${startPort}`);
-  }
-
-  const PORT = await findAvailablePort(defaultPort);
 
   const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000,http://localhost:5173')
     .split(',')
@@ -117,6 +125,8 @@ async function startServer() {
     standardHeaders: true,
     legacyHeaders: false,
     message: { error: 'Too many requests, please try again later.' },
+    // The suite issues far more than 100 requests per run.
+    skip: () => process.env.NODE_ENV === 'test',
   });
 
   const authLimiter = rateLimit({
@@ -125,6 +135,8 @@ async function startServer() {
     standardHeaders: true,
     legacyHeaders: false,
     message: { error: 'Too many authentication attempts, please try again later.' },
+    // Five login attempts per 15 minutes is far too few to test the auth flow.
+    skip: () => process.env.NODE_ENV === 'test',
   });
 
   // Scoped to /api: mounted globally it also throttles the SPA's static assets
@@ -334,38 +346,7 @@ async function startServer() {
   }));
 
   app.get('/api/analytics', requireManager, route(async (req, res) => {
-    const allTickets = await ticketRepo.findAll();
-    const openTickets = allTickets.filter(t => t.status === 'Open' || t.status === 'Vendor Assigned' || t.status === 'In Progress').length;
-    const inProgressTickets = allTickets.filter(t => t.status === 'Vendor Assigned' || t.status === 'In Progress').length;
-    const resolvedToday = allTickets.filter(t => t.status === 'Resolved' || t.status === 'Closed').length;
-    const escalatedCount = allTickets.filter(t => t.status === 'Escalated').length;
-    const slaAtRiskCount = allTickets.filter(t => t.urgency === 'High' && (t.status === 'Open' || t.status === 'Vendor Assigned')).length;
-
-    const catMap: Record<string, number> = {};
-    allTickets.forEach(t => { catMap[t.issueCategory] = (catMap[t.issueCategory] || 0) + 1; });
-    let topCat = 'Plumbing';
-    let maxCount = 0;
-    Object.entries(catMap).forEach(([cat, cnt]) => { if (cnt > maxCount) { maxCount = cnt; topCat = cat; } });
-
-    const report = {
-      date: new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }),
-      totalTickets: allTickets.length,
-      openTickets,
-      inProgressTickets,
-      resolvedToday,
-      escalatedCount,
-      avgResponseTimeMinutes: 18,
-      frequentCategory: topCat,
-      topPerformingVendor: 'Ramesh Kumar Plumber (4.9 stars)',
-      summaryText: `SocietyOps AI managed ${allTickets.length} total tickets with an average first-response speed of 18 minutes. ${resolvedToday} tickets successfully closed today. ${topCat} remains the most requested category.`,
-      recommendations: [
-        'Schedule preventive maintenance check for Tower B Elevator ARD battery',
-        'Stock extra master bathroom flush valves in RWA inventory',
-        'Add 1 backup Electrician vendor for weekend evening slots'
-      ],
-      slaAtRiskCount,
-    };
-
+    const report = buildDailyReport(await ticketRepo.findAll());
     logger.info('Analytics report generated');
     res.json(report);
   }));
@@ -482,29 +463,8 @@ async function startServer() {
     }
   }));
 
-  // --- VITE MIDDLEWARE SETUP ---
-  const HMR_PORT = Number(process.env.HMR_PORT) || 24678;
-  if (process.env.NODE_ENV !== 'production') {
-    try {
-      const vite = await createViteServer({
-        server: { middlewareMode: true, hmr: { port: HMR_PORT } },
-        appType: 'spa',
-      });
-      app.use(vite.middlewares);
-    } catch (viteErr) {
-      logger.warn('Vite dev server HMR failed, falling back to disabled HMR', { error: (viteErr as Error).message });
-      const vite = await createViteServer({
-        server: { middlewareMode: true, hmr: false },
-        appType: 'spa',
-      });
-      app.use(vite.middlewares);
-    }
-  } else {
-    const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
+  if (opts.attachFrontend) {
+    await opts.attachFrontend(app);
   }
 
   // Terminal error handler. Async routes reach it via `route()`; registered last
@@ -524,6 +484,41 @@ async function startServer() {
     }
 
     res.status(500).json({ error: 'Internal server error' });
+  });
+
+  return app;
+}
+
+async function startServer() {
+  const PORT = await findAvailablePort(Number(process.env.PORT) || 3000);
+
+  const app = await createApp({
+    attachFrontend: async (app) => {
+    // --- VITE MIDDLEWARE SETUP ---
+    const HMR_PORT = Number(process.env.HMR_PORT) || 24678;
+    if (process.env.NODE_ENV !== 'production') {
+      try {
+        const vite = await createViteServer({
+          server: { middlewareMode: true, hmr: { port: HMR_PORT } },
+          appType: 'spa',
+        });
+        app.use(vite.middlewares);
+      } catch (viteErr) {
+        logger.warn('Vite dev server HMR failed, falling back to disabled HMR', { error: (viteErr as Error).message });
+        const vite = await createViteServer({
+          server: { middlewareMode: true, hmr: false },
+          appType: 'spa',
+        });
+        app.use(vite.middlewares);
+      }
+    } else {
+      const distPath = path.join(process.cwd(), 'dist');
+      app.use(express.static(distPath));
+      app.get('*', (req, res) => {
+        res.sendFile(path.join(distPath, 'index.html'));
+      });
+    }
+    },
   });
 
   process.on('unhandledRejection', (reason) => {
@@ -558,4 +553,7 @@ async function startServer() {
   process.on('SIGINT', gracefulShutdown);
 }
 
-startServer();
+// Tests import createApp directly; only a real run should bind a port.
+if (process.env.NODE_ENV !== 'test') {
+  startServer();
+}

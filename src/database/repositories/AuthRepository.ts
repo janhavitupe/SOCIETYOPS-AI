@@ -34,8 +34,12 @@ export class AuthRepository {
   }
 
   async verifyResidentPassword(residentId: string, password: string): Promise<boolean> {
+    // updatePassword appends a row rather than replacing one, so a resident can
+    // have several hashes. Without this ordering findFirst returned an arbitrary
+    // row, which let a password that had already been changed keep working.
     const record = await this.prisma.residentPassword.findFirst({
       where: { residentId },
+      orderBy: { createdAt: 'desc' },
     });
     if (!record) return false;
     return verifyPassword(password, record.hash);

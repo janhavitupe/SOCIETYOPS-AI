@@ -1,6 +1,7 @@
 import { ticketRepo, vendorRepo, notificationRepo, agentLogRepo } from '../database/repositories';
 import { FunctionDeclaration, Type } from '@google/genai';
 import { IssueCategory, UrgencyLevel, TicketStatus } from '../types';
+import { buildDailyReport } from '../services/analytics';
 
 export const maintenanceToolDeclarations: FunctionDeclaration[] = [
   {
@@ -265,39 +266,10 @@ export function executeToolCall(name: string, args: any) {
     }
 
     case 'generate_daily_report': {
-      return ticketRepo.findAll().then(async (allTickets) => {
-        const openTickets = allTickets.filter(t => t.status === 'Open' || t.status === 'Vendor Assigned' || t.status === 'In Progress').length;
-        const inProgressTickets = allTickets.filter(t => t.status === 'Vendor Assigned' || t.status === 'In Progress').length;
-        const resolvedToday = allTickets.filter(t => t.status === 'Resolved' || t.status === 'Closed').length;
-        const escalatedCount = allTickets.filter(t => t.status === 'Escalated').length;
-        const slaAtRiskCount = allTickets.filter(t => t.urgency === 'High' && (t.status === 'Open' || t.status === 'Vendor Assigned')).length;
-
-        const catMap: Record<string, number> = {};
-        allTickets.forEach(t => { catMap[t.issueCategory] = (catMap[t.issueCategory] || 0) + 1; });
-        let topCat = 'Plumbing';
-        let maxCount = 0;
-        Object.entries(catMap).forEach(([cat, cnt]) => { if (cnt > maxCount) { maxCount = cnt; topCat = cat; } });
-
-        const report = {
-          date: new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }),
-          totalTickets: allTickets.length,
-          openTickets,
-          inProgressTickets,
-          resolvedToday,
-          escalatedCount,
-          avgResponseTimeMinutes: 18,
-          frequentCategory: topCat,
-          topPerformingVendor: 'Ramesh Kumar Plumber (4.9 stars)',
-          summaryText: `SocietyOps AI managed ${allTickets.length} total tickets with an average first-response speed of 18 minutes. ${resolvedToday} tickets successfully closed today. ${topCat} remains the most requested category.`,
-          recommendations: [
-            'Schedule preventive maintenance check for Tower B Elevator ARD battery',
-            'Stock extra master bathroom flush valves in RWA inventory',
-            'Add 1 backup Electrician vendor for weekend evening slots'
-          ],
-          slaAtRiskCount,
-        };
-        return { success: true, report };
-      });
+      return ticketRepo.findAll().then((allTickets) => ({
+        success: true,
+        report: buildDailyReport(allTickets),
+      }));
     }
 
     default:
