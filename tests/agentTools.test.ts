@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { executeToolCall, type ToolActor } from '../src/tools/maintenanceTools';
 import { ticketRepo } from '../src/database/repositories';
+import { deleteTickets } from './helpers';
 import { prisma } from '../src/database/prisma';
 
 /**
@@ -47,7 +48,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (created.length) {
-    await prisma.ticket.deleteMany({ where: { id: { in: created } } });
+    await deleteTickets(created);
   }
   await prisma.$disconnect();
 });

@@ -1,4 +1,5 @@
 import { PrismaClient, Ticket as PrismaTicket, TimelineEvent as PrismaTimelineEvent, Vendor, ResidentProfile } from '@prisma/client';
+import { slaDueAt } from '../../services/sla';
 
 export interface TicketData {
   flatNumber: string;
@@ -11,6 +12,9 @@ export interface TicketData {
   residentId?: string;
   vendorId?: string;
 }
+
+/** Statuses after which a vendor is no longer working the job. */
+const FINISHED_STATUSES = ['Resolved', 'Closed'];
 
 export interface TimelineEventData {
   id: string;
@@ -76,6 +80,9 @@ export class TicketRepository {
         description: data.description,
         urgency: data.urgency,
         status: 'Open',
+        // Give the ticket a real deadline now, rather than inferring urgency
+        // pressure later from status alone.
+        slaDueAt: slaDueAt(data.urgency),
         images: data.images || [],
         societyName: 'Shree Ram Enclave, Powai',
         residentId: data.residentId,
@@ -101,17 +108,35 @@ export class TicketRepository {
     if (!existing) return undefined;
 
     const now = new Date().toISOString();
+    const isFinishing =
+      FINISHED_STATUSES.includes(updates.status) && !FINISHED_STATUSES.includes(existing.status);
+
     const updated = await this.prisma.ticket.update({
       where: { id },
       data: {
         ...updates,
         updatedAt: now,
-        ...(updates.status === 'Resolved' || updates.status === 'Closed' ? { resolvedAt: now } : {}),
+        ...(isFinishing ? { resolvedAt: now } : {}),
       },
       include: { timeline: true },
     });
 
+    // Release the vendor. assignVendor incremented this counter and nothing
+    // ever decremented it, so every vendor looked permanently busier than they
+    // were and the figure was unusable for dispatch decisions.
+    if (isFinishing && existing.assignedVendorId) {
+      await this.releaseVendor(existing.assignedVendorId);
+    }
+
     return toTicket(updated);
+  }
+
+  /** Decrements a vendor's live job count without letting it go negative. */
+  private async releaseVendor(vendorId: string): Promise<void> {
+    await this.prisma.vendor.updateMany({
+      where: { id: vendorId, activeJobsCount: { gt: 0 } },
+      data: { activeJobsCount: { decrement: 1 } },
+    });
   }
 
   async assignVendor(ticketId: string, vendorId: string, estimatedEta: string = '30 mins'): Promise<any | undefined> {
@@ -210,10 +235,20 @@ export class TicketRepository {
   }
 
   async softDelete(id: string): Promise<boolean> {
+    const existing = await this.prisma.ticket.findFirst({ where: { id, deletedAt: null } });
+
     const result = await this.prisma.ticket.updateMany({
       where: { id, deletedAt: null },
       data: { deletedAt: new Date() },
     });
+
+    // A deleted ticket is no longer work in progress. Without this the vendor
+    // stays charged for it forever, which is how activeJobsCount drifted far
+    // above the number of jobs actually open.
+    if (result.count > 0 && existing?.assignedVendorId && !FINISHED_STATUSES.includes(existing.status)) {
+      await this.releaseVendor(existing.assignedVendorId);
+    }
+
     return result.count > 0;
   }
 }

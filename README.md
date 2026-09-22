@@ -72,6 +72,10 @@ The app will be available at `http://localhost:3000`.
 | `JWT_SECRET` | Yes (prod) | `dev-secret-change-me-in-production-and-keep-it-long-at-least-32-chars` | JWT signing secret |
 | `GROQ_API_KEY` | No | - | Groq API key for AI chat. Without one every reply comes from the deterministic fallback engine; `/api/chat` reports `source` so you can tell which answered. |
 | `GROQ_MODEL` | No | `qwen/qwen3.8-27b` | Chat model. This is the only Groq model that accepts images, so a text-only model will reject messages carrying a photo. |
+| `TWILIO_ACCOUNT_SID` | No | - | Set all three Twilio values to deliver notifications for real. Without them messages are recorded with status `Simulated`, never `Sent`. |
+| `TWILIO_AUTH_TOKEN` | No | - | Twilio auth token |
+| `TWILIO_FROM_NUMBER` | No | - | Sending number in E.164, e.g. `+14155238886` |
+| `FOLLOWUP_INTERVAL_MINUTES` | No | - | Runs the follow-up agent on a timer. Unset means it only runs when triggered from the dashboard. |
 | `ALLOWED_ORIGINS` | No | `http://localhost:3000,http://localhost:5173` | CORS whitelist |
 | `PORT` | No | `3000` | Server port |
 | `BACKUP_BUCKET` | No | - | S3/GCS bucket for automated backups |

@@ -1,4 +1,5 @@
-import { ticketRepo, vendorRepo, notificationRepo, agentLogRepo } from '../database/repositories';
+import { ticketRepo, vendorRepo, agentLogRepo } from '../database/repositories';
+import { sendNotification } from '../services/notifications';
 import type { ChatCompletionTool } from 'openai/resources/chat/completions';
 import { IssueCategory, UrgencyLevel, TicketStatus } from '../types';
 import { buildDailyReport } from '../services/analytics';
@@ -171,6 +172,7 @@ export const maintenanceToolDeclarations: ChatCompletionTool[] = [
         properties: {
           ticketId: str('Ticket ID'),
           feedback: str('Optional resident feedback or completion note'),
+          rating: { type: 'integer' as const, description: 'Optional resident satisfaction rating from 1 to 5' },
         },
         required: ['ticketId'],
       },
@@ -292,7 +294,7 @@ export async function executeToolCall(name: string, args: any, actor: ToolActor)
       const { error, ticket } = await ticketForActor(args.ticketId, actor);
       if (error) return denied(error);
 
-      const notification = await notificationRepo.create({
+      const notification = await sendNotification({
         ticketId: ticket.id,
         recipientType: 'resident',
         recipientName: ticket.residentName,
@@ -307,7 +309,7 @@ export async function executeToolCall(name: string, args: any, actor: ToolActor)
       const { error, ticket } = await ticketForActor(args.ticketId, actor);
       if (error) return denied(error);
 
-      const notification = await notificationRepo.create({
+      const notification = await sendNotification({
         ticketId: ticket.id,
         recipientType: 'vendor',
         recipientName: ticket.assignedVendorName || 'Vendor',
@@ -322,7 +324,7 @@ export async function executeToolCall(name: string, args: any, actor: ToolActor)
       if (error) return denied(error);
       if (!ticket.assignedVendorId) return { success: false, message: 'No vendor assigned to this ticket yet' };
 
-      const notification = await notificationRepo.create({
+      const notification = await sendNotification({
         ticketId: ticket.id,
         recipientType: 'vendor',
         recipientName: ticket.assignedVendorName || 'Vendor',
@@ -344,9 +346,19 @@ export async function executeToolCall(name: string, args: any, actor: ToolActor)
       const { error, ticket } = await ticketForActor(args.ticketId, actor);
       if (error) return denied(error);
 
-      const closed = await ticketRepo.update(ticket.id, { status: 'Closed' });
+      // Feedback used to be accepted by the tool schema and then dropped.
+      const closed = await ticketRepo.update(ticket.id, {
+        status: 'Closed',
+        ...(typeof args.feedback === 'string' && args.feedback.trim()
+          ? { residentFeedback: args.feedback.trim() }
+          : {}),
+        ...(Number.isInteger(args.rating) && args.rating >= 1 && args.rating <= 5
+          ? { residentRating: args.rating }
+          : {}),
+      });
+
       if (closed) {
-        await notificationRepo.create({
+        await sendNotification({
           ticketId: closed.id,
           recipientType: 'resident',
           recipientName: closed.residentName,

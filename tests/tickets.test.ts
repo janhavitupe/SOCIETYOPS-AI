@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { agent, login, bearer, ACCOUNTS, type Agent } from './helpers';
+import { agent, login, bearer, ACCOUNTS, deleteTickets, type Agent } from './helpers';
 import { prisma } from '../src/database/prisma';
 
 let api: Agent;
@@ -23,7 +23,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (created.length) {
-    await prisma.ticket.deleteMany({ where: { id: { in: created } } });
+    await deleteTickets(created);
   }
   await prisma.$disconnect();
 });

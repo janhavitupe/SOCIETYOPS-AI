@@ -33,3 +33,32 @@ export async function login(account: { flatNumber: string; phone: string; passwo
 }
 
 export const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
+
+/**
+ * Removes tickets a suite created, releasing any vendor still charged for them.
+ *
+ * Deleting rows straight through Prisma bypasses the repository, so the
+ * activeJobsCount that assignVendor incremented would otherwise be stranded
+ * and every run would inflate it further.
+ */
+export async function deleteTickets(ids: string[]): Promise<void> {
+  if (!ids.length) return;
+
+  const { prisma } = await import('../src/database/prisma');
+
+  const tickets = await prisma.ticket.findMany({
+    where: { id: { in: ids } },
+    select: { assignedVendorId: true, status: true },
+  });
+
+  for (const ticket of tickets) {
+    if (ticket.assignedVendorId && !['Resolved', 'Closed'].includes(ticket.status)) {
+      await prisma.vendor.updateMany({
+        where: { id: ticket.assignedVendorId, activeJobsCount: { gt: 0 } },
+        data: { activeJobsCount: { decrement: 1 } },
+      });
+    }
+  }
+
+  await prisma.ticket.deleteMany({ where: { id: { in: ids } } });
+}

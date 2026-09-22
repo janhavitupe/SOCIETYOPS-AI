@@ -25,6 +25,8 @@ import {
 } from './src/auth/authMiddleware';
 import { processResidentMessage } from './src/agents/orchestrator';
 import { buildDailyReport } from './src/services/analytics';
+import { sendNotification } from './src/services/notifications';
+import { runFollowupCycle, startFollowupScheduler } from './src/services/followup';
 
 const logger = winston.createLogger({
   level: process.env.LOG_LEVEL || 'info',
@@ -386,55 +388,20 @@ export async function createApp(
   }));
 
   app.post('/api/followup/run', requireManager, route(async (req, res) => {
-    let remindersSent = 0;
-    const escalatedTickets: any[] = [];
-    const allTickets = await ticketRepo.findAll();
+    const result = await runFollowupCycle();
 
-    for (const ticket of allTickets) {
-      if (ticket.status === 'Open') {
-        const vendor = await vendorRepo.findBestForCategory(ticket.issueCategory);
-        if (vendor) {
-          await ticketRepo.assignVendor(ticket.id, vendor.id, '25 mins');
-          remindersSent++;
-        }
-      } else if (ticket.status === 'Vendor Assigned') {
-        const isEmergency = ticket.description.toLowerCase().includes('stuck') ||
-                            ticket.description.toLowerCase().includes('gas') ||
-                            ticket.description.toLowerCase().includes('sewage');
-
-        if (isEmergency && ticket.urgency === 'High') {
-          const updated = await ticketRepo.escalateTicket(ticket.id, 'Urgent life-safety keyword auto-detected during Follow-up Agent cycle');
-          if (updated) escalatedTickets.push(updated);
-        } else {
-          if (ticket.assignedVendorId) {
-            await notificationRepo.create({
-              ticketId: ticket.id,
-              recipientType: 'vendor',
-              recipientName: ticket.assignedVendorName || 'Vendor',
-              phone: ticket.assignedVendorPhone || '',
-              message: `REMINDER: Please confirm arrival at ${ticket.flatNumber} for ticket #${ticket.id}. Resident is waiting.`,
-              channel: 'WhatsApp',
-              language: 'English'
-            });
-            remindersSent++;
-          }
-        }
-      }
-    }
-
-    await agentLogRepo.create({
-      agentName: 'Follow-up Agent',
-      action: 'Autonomous Cycle Completed',
-      details: `Checked ${allTickets.length} tickets. Sent ${remindersSent} vendor pings, auto-escalated ${escalatedTickets.length} emergency tickets.`,
+    logger.info('Follow-up agent cycle executed', {
+      checkedCount: result.checkedCount,
+      escalatedTickets: result.escalatedTickets.length,
+      remindersSent: result.remindersSent,
+      dispatched: result.dispatched,
+      trigger: 'manual',
     });
 
-    logger.info('Follow-up agent cycle executed', { checkedCount: allTickets.length, escalatedTickets: escalatedTickets.length, remindersSent });
     res.json({
       success: true,
       message: 'Autonomous Follow-up Agent cycle executed',
-      checkedCount: allTickets.length,
-      escalatedTickets,
-      remindersSent,
+      ...result,
     });
   }));
 
@@ -536,8 +503,19 @@ async function startServer() {
     logger.info(`SocietyOps AI server running at http://0.0.0.0:${PORT}`, { port: PORT, env: process.env.NODE_ENV || 'development' });
   });
 
+  // Runs the follow-up agent unattended when FOLLOWUP_INTERVAL_MINUTES is set.
+  // Without it the "autonomous" cycle only ran when someone pressed a button.
+  const stopFollowupScheduler = startFollowupScheduler((err) =>
+    logger.error('Scheduled follow-up cycle failed', { error: err.message, stack: err.stack })
+  );
+
+  if (stopFollowupScheduler) {
+    logger.info('Follow-up scheduler enabled', { everyMinutes: Number(process.env.FOLLOWUP_INTERVAL_MINUTES) });
+  }
+
   const gracefulShutdown = () => {
     logger.info('Received shutdown signal, closing server gracefully...');
+    stopFollowupScheduler?.();
     server.close(() => {
       logger.info('Server closed successfully');
       process.exit(0);

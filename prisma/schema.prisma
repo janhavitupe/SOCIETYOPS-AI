@@ -28,6 +28,13 @@ model Ticket {
   resolvedAt         DateTime?
   deletedAt          DateTime?
 
+  /// When this ticket is due under its urgency band, set at creation.
+  /// SLA risk was previously guessed from status and urgency with no clock.
+  slaDueAt           DateTime?
+  /// Captured when the ticket is closed; close_ticket used to discard it.
+  residentFeedback   String?
+  residentRating     Int?
+
   residentId         String?
   resident           ResidentProfile? @relation(fields: [residentId], references: [id])
   vendorId           String?
@@ -89,7 +96,12 @@ model NotificationLog {
   channel       String
   timestamp     String
   language      String
+  /// Simulated | Sent | Failed. It was previously hardcoded to Sent even
+  /// though nothing was ever dispatched to a real provider.
   status        String
+  provider          String?
+  providerMessageId String?
+  failureReason     String?
   deletedAt     DateTime?
 
   @@index([ticketId])

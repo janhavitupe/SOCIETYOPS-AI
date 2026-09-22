@@ -8,6 +8,10 @@ export interface NotificationData {
   message: string;
   channel?: string;
   language?: string;
+  status?: string;
+  provider?: string;
+  providerMessageId?: string;
+  failureReason?: string;
 }
 
 export class NotificationRepository {
@@ -27,7 +31,9 @@ export class NotificationRepository {
         channel: data.channel || 'WhatsApp',
         language: data.language || 'Hinglish',
         timestamp: new Date().toISOString(),
-        status: 'Sent',
+        // Defaults to Simulated rather than Sent: without a dispatch result
+        // the honest claim is that the message was recorded, not delivered.
+        status: data.status || 'Simulated',
       },
     });
   }
