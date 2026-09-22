@@ -9,6 +9,7 @@ export default defineConfig({
     // valid syntax in PowerShell, which is where this is run.
     env: { NODE_ENV: 'test' },
     include: ['tests/**/*.test.ts'],
+    setupFiles: ['./tests/setup.ts'],
     // The API tests share one PostgreSQL database, so files must not race.
     fileParallelism: false,
     testTimeout: 30000,

@@ -153,3 +153,16 @@ model ResidentPassword {
 
   @@index([residentId])
 }
+
+/// One turn of a resident's conversation with the assistant.
+/// Kept so follow-up messages ("actually make that urgent") have context;
+/// previously every /api/chat call was a standalone request with no history.
+model ChatMessage {
+  id         String   @id @default(cuid())
+  residentId String
+  role       String
+  text       String
+  createdAt  DateTime @default(now())
+
+  @@index([residentId, createdAt])
+}

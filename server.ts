@@ -449,7 +449,7 @@ export async function createApp(
       // Identity comes from the token. The body used to supply flatNumber and
       // residentName, which let any caller raise a ticket as any resident.
       const user = req.user!;
-      const result = await processResidentMessage(text, user.flatNumber, user.name, images);
+      const result = await processResidentMessage(user, text, images);
       logger.info('Chat message processed', {
         flatNumber: user.flatNumber,
         textLength: text.length,

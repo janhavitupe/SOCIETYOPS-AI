@@ -70,7 +70,8 @@ The app will be available at `http://localhost:3000`.
 |----------|----------|---------|-------------|
 | `DATABASE_URL` | Yes | `postgresql://societyops:societyops_dev@localhost:5432/societyops?schema=public` | PostgreSQL connection string |
 | `JWT_SECRET` | Yes (prod) | `dev-secret-change-me-in-production-and-keep-it-long-at-least-32-chars` | JWT signing secret |
-| `GEMINI_API_KEY` | No | - | Google Gemini API key for AI chat |
+| `GEMINI_API_KEY` | No | - | Google Gemini API key for AI chat. Without a valid key every reply comes from the deterministic fallback engine; the response reports `source` so you can tell which answered. |
+| `GEMINI_MODEL` | No | `gemini-3.6-flash` | Model id used for chat. Override if the default does not resolve. |
 | `ALLOWED_ORIGINS` | No | `http://localhost:3000,http://localhost:5173` | CORS whitelist |
 | `PORT` | No | `3000` | Server port |
 | `BACKUP_BUCKET` | No | - | S3/GCS bucket for automated backups |
