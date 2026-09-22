@@ -6,7 +6,7 @@ AI-powered maintenance coordination for Indian housing societies and RWAs.
 
 - **Frontend**: React 19 + Vite 6 + Tailwind CSS 4
 - **Backend**: Express 4 + TypeScript
-- **AI**: Google Gemini (`@google/genai`)
+- **AI**: Groq (OpenAI-compatible API, `openai` SDK)
 - **Database**: PostgreSQL 16 via Prisma 7 ORM
 - **Security**: Helmet, CORS whitelist, rate limiting, xss-clean, hpp
 - **Logging**: Winston + Morgan
@@ -70,8 +70,8 @@ The app will be available at `http://localhost:3000`.
 |----------|----------|---------|-------------|
 | `DATABASE_URL` | Yes | `postgresql://societyops:societyops_dev@localhost:5432/societyops?schema=public` | PostgreSQL connection string |
 | `JWT_SECRET` | Yes (prod) | `dev-secret-change-me-in-production-and-keep-it-long-at-least-32-chars` | JWT signing secret |
-| `GEMINI_API_KEY` | No | - | Google Gemini API key for AI chat. Without a valid key every reply comes from the deterministic fallback engine; the response reports `source` so you can tell which answered. |
-| `GEMINI_MODEL` | No | `gemini-3.6-flash` | Model id used for chat. Override if the default does not resolve. |
+| `GROQ_API_KEY` | No | - | Groq API key for AI chat. Without one every reply comes from the deterministic fallback engine; `/api/chat` reports `source` so you can tell which answered. |
+| `GROQ_MODEL` | No | `qwen/qwen3.8-27b` | Chat model. This is the only Groq model that accepts images, so a text-only model will reject messages carrying a photo. |
 | `ALLOWED_ORIGINS` | No | `http://localhost:3000,http://localhost:5173` | CORS whitelist |
 | `PORT` | No | `3000` | Server port |
 | `BACKUP_BUCKET` | No | - | S3/GCS bucket for automated backups |

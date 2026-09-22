@@ -1,157 +1,187 @@
 import { ticketRepo, vendorRepo, notificationRepo, agentLogRepo } from '../database/repositories';
-import { FunctionDeclaration, Type } from '@google/genai';
+import type { ChatCompletionTool } from 'openai/resources/chat/completions';
 import { IssueCategory, UrgencyLevel, TicketStatus } from '../types';
 import { buildDailyReport } from '../services/analytics';
 import { JwtPayload } from '../auth/authUtils';
 import { canAccessAllTickets, canAccessFlat } from '../auth/authMiddleware';
 
-export const maintenanceToolDeclarations: FunctionDeclaration[] = [
+const str = (description: string) => ({ type: 'string' as const, description });
+
+/**
+ * Tool definitions in OpenAI function-calling shape, which is what Groq's
+ * API accepts. These were previously Gemini `FunctionDeclaration`s; the
+ * parameters are plain JSON Schema either way, so only the wrapper changed.
+ */
+export const maintenanceToolDeclarations: ChatCompletionTool[] = [
   {
-    name: 'create_ticket',
-    description: 'Create a new maintenance ticket after extracting flat number, issue category, urgency, and description from resident complaint.',
-    parameters: {
-      type: Type.OBJECT,
-      properties: {
-        flatNumber: { type: Type.STRING, description: 'Flat or Tower number, e.g. "B-402" or "Tower A"' },
-        residentName: { type: Type.STRING, description: 'Name of resident reporting issue' },
-        residentPhone: { type: Type.STRING, description: 'Phone number of resident' },
-        issueCategory: {
-          type: Type.STRING,
-          description: 'Category: Plumbing, Electrical, Lift & Elevator, Carpentry & Locks, AC & Appliances, Cleaning & Pest, Security & Intercom, General Repairs',
+    type: 'function',
+    function: {
+      name: 'create_ticket',
+      description: 'Create a new maintenance ticket after extracting issue category, urgency and description from the resident complaint.',
+      parameters: {
+        type: 'object',
+        properties: {
+          flatNumber: str('Flat or Tower number, e.g. "B-402". Ignored for residents, who are always pinned to their own flat.'),
+          residentName: str('Name of the resident reporting the issue. Ignored for residents.'),
+          residentPhone: str('Phone number of the resident'),
+          issueCategory: str('One of: Plumbing, Electrical, Lift & Elevator, Carpentry & Locks, AC & Appliances, Cleaning & Pest, Security & Intercom, General Repairs'),
+          description: str('Detailed description of the maintenance problem'),
+          urgency: str('Urgency level: High, Medium or Low'),
         },
-        description: { type: Type.STRING, description: 'Detailed description of maintenance problem' },
-        urgency: { type: Type.STRING, description: 'Urgency level: High, Medium, or Low' },
-      },
-      required: ['flatNumber', 'issueCategory', 'description', 'urgency'],
-    },
-  },
-  {
-    name: 'update_ticket',
-    description: 'Update status or description of an existing maintenance ticket.',
-    parameters: {
-      type: Type.OBJECT,
-      properties: {
-        ticketId: { type: Type.STRING, description: 'Ticket ID e.g. "SOC-1042"' },
-        status: { type: Type.STRING, description: 'Status: Open, Vendor Assigned, In Progress, Escalated, Resolved, Closed' },
-        description: { type: Type.STRING, description: 'Updated note or description' },
-        urgency: { type: Type.STRING, description: 'Updated urgency: High, Medium, Low' },
-      },
-      required: ['ticketId'],
-    },
-  },
-  {
-    name: 'get_ticket',
-    description: 'Fetch complete details and timeline of a ticket by Ticket ID.',
-    parameters: {
-      type: Type.OBJECT,
-      properties: {
-        ticketId: { type: Type.STRING, description: 'Ticket ID e.g. "SOC-1042"' },
-      },
-      required: ['ticketId'],
-    },
-  },
-  {
-    name: 'search_ticket',
-    description: 'Search tickets by keyword query, flat number, category, urgency or status.',
-    parameters: {
-      type: Type.OBJECT,
-      properties: {
-        query: { type: Type.STRING, description: 'Keyword query e.g. "leakage", "402", "Ramesh"' },
-        category: { type: Type.STRING, description: 'Optional category filter' },
-        urgency: { type: Type.STRING, description: 'Optional urgency filter' },
-        status: { type: Type.STRING, description: 'Optional status filter' },
+        required: ['issueCategory', 'description', 'urgency'],
       },
     },
   },
   {
-    name: 'assign_vendor',
-    description: 'Assign a maintenance vendor to a ticket and set estimated response time.',
-    parameters: {
-      type: Type.OBJECT,
-      properties: {
-        ticketId: { type: Type.STRING, description: 'Ticket ID e.g. "SOC-1042"' },
-        vendorId: { type: Type.STRING, description: 'Vendor ID e.g. "VND-01"' },
-        estimatedEta: { type: Type.STRING, description: 'Estimated arrival time e.g. "20 mins"' },
-      },
-      required: ['ticketId', 'vendorId'],
-    },
-  },
-  {
-    name: 'get_vendors',
-    description: 'Get list of registered society vendors, optionally filtered by issue category.',
-    parameters: {
-      type: Type.OBJECT,
-      properties: {
-        category: { type: Type.STRING, description: 'Optional category e.g. Plumbing, Electrical' },
+    type: 'function',
+    function: {
+      name: 'update_ticket',
+      description: 'Update the status, description or urgency of an existing ticket. Maintenance staff only.',
+      parameters: {
+        type: 'object',
+        properties: {
+          ticketId: str('Ticket ID e.g. "SOC-1042"'),
+          status: str('Status: Open, Vendor Assigned, In Progress, Escalated, Resolved, Closed'),
+          description: str('Updated note or description'),
+          urgency: str('Updated urgency: High, Medium, Low'),
+        },
+        required: ['ticketId'],
       },
     },
   },
   {
-    name: 'notify_resident',
-    description: 'Send polite SMS/WhatsApp update to resident regarding ticket progress.',
-    parameters: {
-      type: Type.OBJECT,
-      properties: {
-        ticketId: { type: Type.STRING, description: 'Ticket ID' },
-        message: { type: Type.STRING, description: 'Clear update message in English or Hinglish' },
+    type: 'function',
+    function: {
+      name: 'get_ticket',
+      description: 'Fetch the full details and timeline of one ticket by ID.',
+      parameters: {
+        type: 'object',
+        properties: { ticketId: str('Ticket ID e.g. "SOC-1042"') },
+        required: ['ticketId'],
       },
-      required: ['ticketId', 'message'],
     },
   },
   {
-    name: 'notify_vendor',
-    description: 'Dispatch job notification to vendor with job location and resident contact.',
-    parameters: {
-      type: Type.OBJECT,
-      properties: {
-        ticketId: { type: Type.STRING, description: 'Ticket ID' },
-        vendorId: { type: Type.STRING, description: 'Vendor ID' },
-        message: { type: Type.STRING, description: 'Job detail message' },
+    type: 'function',
+    function: {
+      name: 'search_ticket',
+      description: 'Search tickets by keyword, category, urgency or status. Residents only ever see their own flat.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: str('Keyword query e.g. "leakage", "Ramesh"'),
+          category: str('Optional category filter'),
+          urgency: str('Optional urgency filter'),
+          status: str('Optional status filter'),
+        },
       },
-      required: ['ticketId', 'vendorId', 'message'],
     },
   },
   {
-    name: 'followup_vendor',
-    description: 'Send reminder ping to assigned vendor for pending or delayed job.',
-    parameters: {
-      type: Type.OBJECT,
-      properties: {
-        ticketId: { type: Type.STRING, description: 'Ticket ID' },
+    type: 'function',
+    function: {
+      name: 'assign_vendor',
+      description: 'Assign a vendor to a ticket and set the estimated response time. Maintenance staff only.',
+      parameters: {
+        type: 'object',
+        properties: {
+          ticketId: str('Ticket ID e.g. "SOC-1042"'),
+          vendorId: str('Vendor ID e.g. "VND-01"'),
+          estimatedEta: str('Estimated arrival time e.g. "20 mins"'),
+        },
+        required: ['ticketId', 'vendorId'],
       },
-      required: ['ticketId'],
     },
   },
   {
-    name: 'escalate_ticket',
-    description: 'Escalate urgent or unresolved complaint to RWA Facility Manager and Safety Committee.',
-    parameters: {
-      type: Type.OBJECT,
-      properties: {
-        ticketId: { type: Type.STRING, description: 'Ticket ID' },
-        reason: { type: Type.STRING, description: 'Reason for escalation e.g. "Lift stuck with residents", "Vendor unresponsive for 2 hours"' },
+    type: 'function',
+    function: {
+      name: 'get_vendors',
+      description: 'List registered society vendors, optionally filtered by issue category.',
+      parameters: {
+        type: 'object',
+        properties: { category: str('Optional category e.g. Plumbing, Electrical') },
       },
-      required: ['ticketId', 'reason'],
     },
   },
   {
-    name: 'close_ticket',
-    description: 'Mark ticket resolved/closed after resident confirmation and optional rating.',
-    parameters: {
-      type: Type.OBJECT,
-      properties: {
-        ticketId: { type: Type.STRING, description: 'Ticket ID' },
-        feedback: { type: Type.STRING, description: 'Optional resident feedback or completion note' },
+    type: 'function',
+    function: {
+      name: 'notify_resident',
+      description: 'Send a polite SMS/WhatsApp update to the resident about ticket progress.',
+      parameters: {
+        type: 'object',
+        properties: {
+          ticketId: str('Ticket ID'),
+          message: str('Clear update message in English or Hinglish'),
+        },
+        required: ['ticketId', 'message'],
       },
-      required: ['ticketId'],
     },
   },
   {
-    name: 'generate_daily_report',
-    description: 'Generate comprehensive society maintenance summary, open tickets count, response speeds and RWA recommendations.',
-    parameters: {
-      type: Type.OBJECT,
-      properties: {},
+    type: 'function',
+    function: {
+      name: 'notify_vendor',
+      description: 'Dispatch a job notification to the vendor. Maintenance staff only.',
+      parameters: {
+        type: 'object',
+        properties: {
+          ticketId: str('Ticket ID'),
+          message: str('Job detail message'),
+        },
+        required: ['ticketId', 'message'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'followup_vendor',
+      description: 'Send a reminder ping to the assigned vendor for a pending or delayed job.',
+      parameters: {
+        type: 'object',
+        properties: { ticketId: str('Ticket ID') },
+        required: ['ticketId'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'escalate_ticket',
+      description: 'Escalate an urgent or unresolved complaint to the RWA Facility Manager and Safety Committee.',
+      parameters: {
+        type: 'object',
+        properties: {
+          ticketId: str('Ticket ID'),
+          reason: str('Reason for escalation e.g. "Lift stuck with residents"'),
+        },
+        required: ['ticketId', 'reason'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'close_ticket',
+      description: 'Mark a ticket closed after the resident confirms the work is done.',
+      parameters: {
+        type: 'object',
+        properties: {
+          ticketId: str('Ticket ID'),
+          feedback: str('Optional resident feedback or completion note'),
+        },
+        required: ['ticketId'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'generate_daily_report',
+      description: 'Generate the society-wide maintenance summary. Maintenance staff only.',
+      parameters: { type: 'object', properties: {} },
     },
   },
 ];

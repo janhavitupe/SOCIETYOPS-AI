@@ -22,7 +22,6 @@
     "backup": "powershell -ExecutionPolicy Bypass -File scripts/backup.ps1"
   },
   "dependencies": {
-    "@google/genai": "^2.4.0",
     "@prisma/adapter-pg": "^7.9.1",
     "@prisma/client": "^7.9.1",
     "@tailwindcss/vite": "^4.1.14",
@@ -38,6 +37,7 @@
     "lucide-react": "^0.546.0",
     "morgan": "^1.11.0",
     "motion": "^12.23.24",
+    "openai": "^7.21.0",
     "pg": "^8.22.0",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
