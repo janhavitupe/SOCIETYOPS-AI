@@ -1,71 +1,26 @@
 // Must precede every other import: ./src/database/prisma builds its connection
 // pool at module-evaluation time and needs DATABASE_URL already in the environment.
 import 'dotenv/config';
-import express, { Request, Response, NextFunction, RequestHandler } from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import xss from 'xss-clean';
 import hpp from 'hpp';
 import rateLimit from 'express-rate-limit';
-import winston from 'winston';
-import morgan from 'morgan';
 import path from 'path';
 import net from 'net';
 import { createServer as createViteServer } from 'vite';
-import { prisma } from './src/database/prisma';
-import { ticketRepo, vendorRepo, notificationRepo, agentLogRepo, societyProfileRepo, residentProfileRepo, authRepo } from './src/database/repositories';
-import authRoutes from "./src/auth/authRoutes";
-import {
-  authenticateToken,
-  requireAuth,
-  requireManager,
-  requireAdmin,
-  canAccessAllTickets,
-  canAccessFlat,
-} from './src/auth/authMiddleware';
-import { processResidentMessage } from './src/agents/orchestrator';
-import { buildDailyReport } from './src/services/analytics';
-import { sendNotification } from './src/services/notifications';
-import { runFollowupCycle, startFollowupScheduler } from './src/services/followup';
-
-const logger = winston.createLogger({
-  level: process.env.LOG_LEVEL || 'info',
-  format: winston.format.combine(
-    winston.format.timestamp(),
-    winston.format.errors({ stack: true }),
-    winston.format.json()
-  ),
-  defaultMeta: { service: 'societyops-api' },
-  transports: [
-    new winston.transports.Console({
-      format: winston.format.combine(
-        winston.format.colorize(),
-        winston.format.printf(({ level, message, timestamp, ...meta }) => {
-          const metaStr = Object.keys(meta).length ? JSON.stringify(meta) : '';
-          return `${timestamp} [${level}]: ${message} ${metaStr}`;
-        })
-      ),
-    }),
-  ],
-});
-
-morgan.token('message', (req) => (req as any).message || '');
-const morganStream = {
-  write: (message: string) => logger.info(message.trim()),
-};
-const morganMiddleware = morgan(
-  ':method :url :status :response-time ms - :res[content-length] - :message',
-  { stream: morganStream }
-);
-
-// Express 4 does not catch rejected promises from async handlers: the rejection
-// never reaches the error middleware and the request hangs until the client
-// times out. Every async route is registered through this wrapper instead.
-type AsyncRouteHandler = (req: Request, res: Response, next: NextFunction) => Promise<unknown>;
-
-const route = (handler: AsyncRouteHandler): RequestHandler => (req, res, next) => {
-  handler(req, res, next).catch(next);
-};
+import { logger, morganMiddleware } from './src/logger';
+import authRoutes from './src/auth/authRoutes';
+import { authenticateToken } from './src/auth/authMiddleware';
+import { startFollowupScheduler } from './src/services/followup';
+import healthRoutes from './src/routes/health';
+import ticketRoutes from './src/routes/tickets';
+import vendorRoutes from './src/routes/vendors';
+import operationsRoutes from './src/routes/operations';
+import societyRoutes from './src/routes/society';
+import followupRoutes from './src/routes/followup';
+import chatRoutes from './src/routes/chat';
 
 async function isPortFree(port: number): Promise<boolean> {
   return new Promise((resolve) => {
@@ -158,277 +113,19 @@ export async function createApp(
   app.use('/api/auth', authRoutes);
 
   // --- REST API ENDPOINTS ---
+  //
+  // Route handlers live in src/routes. They were previously all inline here,
+  // which had grown server.ts past 550 lines and mixed HTTP wiring with
+  // business logic.
 
-  app.get('/api/health', async (req, res) => {
-    let database = 'ok';
-    try {
-      await prisma.$queryRaw`SELECT 1`;
-    } catch (err) {
-      database = 'unreachable';
-      logger.error('Health check: database unreachable', { error: (err as Error).message });
-    }
+  app.use('/api', healthRoutes);
+  app.use('/api', ticketRoutes);
+  app.use('/api', vendorRoutes);
+  app.use('/api', operationsRoutes);
+  app.use('/api', societyRoutes);
+  app.use('/api', followupRoutes);
+  app.use('/api', chatRoutes);
 
-    const healthy = database === 'ok';
-    logger.info('Health check requested', { ip: req.ip, database });
-    res.status(healthy ? 200 : 503).json({
-      status: healthy ? 'ok' : 'degraded',
-      service: 'SocietyOps AI Maintenance Coordination System',
-      version: '1.0.0',
-      database,
-      timestamp: new Date().toISOString(),
-    });
-  });
-
-  app.get('/api/tickets', requireAuth, route(async (req, res) => {
-    const { query, category, urgency, status } = req.query;
-    const user = req.user!;
-
-    // Managers see the whole society; residents are scoped to their own flat in
-    // the query itself, so no other flat's tickets are ever loaded.
-    const flatScope = canAccessAllTickets(user) ? undefined : user.flatNumber;
-
-    const tickets = await ticketRepo.search(
-      (query as string) || '',
-      (category as string) || '',
-      (urgency as string) || '',
-      (status as string) || '',
-      flatScope
-    );
-
-    logger.info('Tickets listed', { count: tickets.length, role: user.role, flatScope, query, category, urgency, status });
-    res.json({ count: tickets.length, tickets });
-  }));
-
-  app.get('/api/tickets/:id', requireAuth, route(async (req, res) => {
-    const ticket = await ticketRepo.findById(req.params.id);
-    if (!ticket) {
-      logger.warn('Ticket not found', { ticketId: req.params.id });
-      return res.status(404).json({ error: 'Ticket not found' });
-    }
-    if (!canAccessFlat(req.user!, ticket.flatNumber)) {
-      logger.warn('Ticket access denied', { ticketId: req.params.id, userId: req.user!.id, role: req.user!.role });
-      return res.status(403).json({ error: 'You do not have access to this ticket' });
-    }
-    logger.info('Ticket retrieved', { ticketId: req.params.id });
-    res.json(ticket);
-  }));
-
-  app.post('/api/tickets', requireAuth, route(async (req, res) => {
-    const { flatNumber, residentName, residentPhone, issueCategory, description, urgency, images } = req.body;
-    if (!description || !issueCategory) {
-      logger.warn('Ticket creation failed - missing fields', { description: !!description, issueCategory: !!issueCategory });
-      return res.status(400).json({ error: 'Missing required ticket fields' });
-    }
-
-    // Identity comes from the token, not the body: a resident may only file
-    // against their own flat. Managers may file on someone's behalf, so the
-    // body's flat and name are honoured only for them.
-    const user = req.user!;
-    const isManager = canAccessAllTickets(user);
-
-    let ticket = await ticketRepo.create({
-      flatNumber: isManager ? (flatNumber || user.flatNumber) : user.flatNumber,
-      residentName: isManager ? (residentName || user.name) : user.name,
-      residentPhone: residentPhone || '+91 98000 00000',
-      issueCategory,
-      description,
-      urgency: urgency || 'Medium',
-      images: images || [],
-      residentId: isManager ? undefined : user.id,
-    });
-
-    const bestVendor = await vendorRepo.findBestForCategory(ticket.issueCategory);
-    if (bestVendor) {
-      await ticketRepo.assignVendor(ticket.id, bestVendor.id, bestVendor.avgResolutionTime);
-      const updated = await ticketRepo.findById(ticket.id);
-      if (updated) ticket = updated;
-    }
-
-    logger.info('Ticket created', { ticketId: ticket.id, category: ticket.issueCategory, urgency: ticket.urgency });
-    res.status(201).json(ticket);
-  }));
-
-  app.patch('/api/tickets/:id', requireManager, route(async (req, res) => {
-    // Whitelisted. req.body used to be spread straight into the Prisma update,
-    // which let a caller write any column on the row, including its id and
-    // timestamps.
-    const updates: Record<string, unknown> = {};
-    for (const field of ['status', 'urgency', 'description', 'issueCategory', 'estimatedEta'] as const) {
-      if (req.body[field] !== undefined) updates[field] = req.body[field];
-    }
-
-    if (Object.keys(updates).length === 0) {
-      return res.status(400).json({ error: 'No updatable fields provided' });
-    }
-
-    const updated = await ticketRepo.update(req.params.id, updates);
-    if (!updated) {
-      logger.warn('Ticket update failed - not found', { ticketId: req.params.id });
-      return res.status(404).json({ error: 'Ticket not found' });
-    }
-    logger.info('Ticket updated', { ticketId: req.params.id });
-    res.json(updated);
-  }));
-
-  app.post('/api/tickets/:id/assign', requireManager, route(async (req, res) => {
-    const { vendorId, estimatedEta } = req.body;
-    if (!vendorId) {
-      logger.warn('Vendor assignment failed - missing vendorId', { ticketId: req.params.id });
-      return res.status(400).json({ error: 'vendorId is required' });
-    }
-    const ticket = await ticketRepo.assignVendor(req.params.id, vendorId, estimatedEta || '30 mins');
-    if (!ticket) {
-      logger.warn('Vendor assignment failed - not found', { ticketId: req.params.id, vendorId });
-      return res.status(404).json({ error: 'Ticket or Vendor not found' });
-    }
-    logger.info('Vendor assigned', { ticketId: req.params.id, vendorId, estimatedEta });
-    res.json(ticket);
-  }));
-
-  // Residents may escalate their own stuck ticket; managers may escalate any.
-  app.post('/api/tickets/:id/escalate', requireAuth, route(async (req, res) => {
-    const existing = await ticketRepo.findById(req.params.id);
-    if (!existing) {
-      logger.warn('Escalation failed - ticket not found', { ticketId: req.params.id });
-      return res.status(404).json({ error: 'Ticket not found' });
-    }
-    if (!canAccessFlat(req.user!, existing.flatNumber)) {
-      logger.warn('Escalation denied', { ticketId: req.params.id, userId: req.user!.id });
-      return res.status(403).json({ error: 'You do not have access to this ticket' });
-    }
-
-    const { reason } = req.body;
-    const ticket = await ticketRepo.escalateTicket(req.params.id, reason || 'Manual Manager Escalation');
-    if (!ticket) {
-      logger.warn('Escalation failed - ticket not found', { ticketId: req.params.id });
-      return res.status(404).json({ error: 'Ticket not found' });
-    }
-    logger.info('Ticket escalated', { ticketId: req.params.id, reason });
-    res.json(ticket);
-  }));
-
-  // Residents may close their own ticket once it is done; managers may close any.
-  app.post('/api/tickets/:id/close', requireAuth, route(async (req, res) => {
-    const existing = await ticketRepo.findById(req.params.id);
-    if (!existing) {
-      logger.warn('Close ticket failed - not found', { ticketId: req.params.id });
-      return res.status(404).json({ error: 'Ticket not found' });
-    }
-    if (!canAccessFlat(req.user!, existing.flatNumber)) {
-      logger.warn('Close denied', { ticketId: req.params.id, userId: req.user!.id });
-      return res.status(403).json({ error: 'You do not have access to this ticket' });
-    }
-
-    const ticket = await ticketRepo.update(req.params.id, { status: 'Closed' });
-    if (!ticket) {
-      logger.warn('Close ticket failed - not found', { ticketId: req.params.id });
-      return res.status(404).json({ error: 'Ticket not found' });
-    }
-    logger.info('Ticket closed', { ticketId: req.params.id });
-    res.json(ticket);
-  }));
-
-  app.get('/api/vendors', requireAuth, route(async (req, res) => {
-    const vendors = await vendorRepo.findAll();
-    logger.info('Vendors listed', { count: vendors.length });
-    res.json({ count: vendors.length, vendors });
-  }));
-
-  // Dispatch logs carry other residents' names, phone numbers and messages.
-  app.get('/api/notifications', requireManager, route(async (req, res) => {
-    const notifications = await notificationRepo.findAll();
-    logger.info('Notifications listed', { count: notifications.length });
-    res.json({ count: notifications.length, notifications });
-  }));
-
-  app.get('/api/logs', requireManager, route(async (req, res) => {
-    const logs = await agentLogRepo.findAll();
-    logger.info('Agent logs listed', { count: logs.length });
-    res.json({ count: logs.length, logs });
-  }));
-
-  app.get('/api/analytics', requireManager, route(async (req, res) => {
-    const report = buildDailyReport(await ticketRepo.findAll());
-    logger.info('Analytics report generated');
-    res.json(report);
-  }));
-
-  app.get('/api/society-profile', requireAuth, route(async (req, res) => {
-    const profile = await societyProfileRepo.find();
-    logger.info('Society profile retrieved');
-    res.json(profile);
-  }));
-
-  app.post('/api/society-profile', requireManager, route(async (req, res) => {
-    const profile = await societyProfileRepo.update(req.body);
-    logger.info('Society profile updated');
-    res.json(profile);
-  }));
-
-  app.get('/api/resident-profiles', requireManager, route(async (req, res) => {
-    const residents = await residentProfileRepo.findAll();
-
-    // accessToken is a standing credential for the account; it must never leave
-    // the server in a list response.
-    const safe = residents.map(({ accessToken, ...rest }) => rest);
-
-    logger.info('Resident profiles listed', { count: safe.length });
-    res.json({ count: safe.length, residents: safe });
-  }));
-
-  // Issues a new standing access token, so this is admin-only.
-  app.post('/api/resident-profiles/:id/token', requireAdmin, route(async (req, res) => {
-    const updated = await residentProfileRepo.issueAccessToken(req.params.id);
-    if (!updated) {
-      logger.warn('Token issuance failed - resident not found', { residentId: req.params.id });
-      return res.status(404).json({ error: 'Resident profile not found' });
-    }
-    logger.info('Access token issued', { residentId: req.params.id });
-    res.json(updated);
-  }));
-
-  app.post('/api/followup/run', requireManager, route(async (req, res) => {
-    const result = await runFollowupCycle();
-
-    logger.info('Follow-up agent cycle executed', {
-      checkedCount: result.checkedCount,
-      escalatedTickets: result.escalatedTickets.length,
-      remindersSent: result.remindersSent,
-      dispatched: result.dispatched,
-      trigger: 'manual',
-    });
-
-    res.json({
-      success: true,
-      message: 'Autonomous Follow-up Agent cycle executed',
-      ...result,
-    });
-  }));
-
-  app.post('/api/chat', requireAuth, route(async (req, res) => {
-    try {
-      const { text, images } = req.body;
-      if (!text) {
-        logger.warn('Chat request failed - missing text');
-        return res.status(400).json({ error: 'Text prompt is required' });
-      }
-
-      // Identity comes from the token. The body used to supply flatNumber and
-      // residentName, which let any caller raise a ticket as any resident.
-      const user = req.user!;
-      const result = await processResidentMessage(user, text, images);
-      logger.info('Chat message processed', {
-        flatNumber: user.flatNumber,
-        textLength: text.length,
-        source: result.source,
-        fallbackReason: result.fallbackReason,
-      });
-      res.json(result);
-    } catch (err: any) {
-      logger.error('Error processing chat message', { error: err.message, stack: err.stack });
-      res.status(500).json({ error: err.message || 'Internal AI orchestration error' });
-    }
-  }));
 
   if (opts.attachFrontend) {
     await opts.attachFrontend(app);
