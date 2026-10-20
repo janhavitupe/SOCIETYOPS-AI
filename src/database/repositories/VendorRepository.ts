@@ -41,7 +41,7 @@ export class VendorRepository {
     const pool = available.length > 0 ? available : vendors;
 
     return pool.reduce((best, candidate) =>
-      this.dispatchScore(candidate) > this.dispatchScore(best) ? candidate : best
+      this.dispatchScore(candidate) > this.dispatchScore(best) ? candidate : best,
     );
   }
 

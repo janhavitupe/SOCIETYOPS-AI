@@ -1,4 +1,4 @@
-import { PrismaClient, NotificationLog as PrismaNotification } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 
 export interface NotificationData {
   ticketId: string;
@@ -30,7 +30,6 @@ export class NotificationRepository {
         ...data,
         channel: data.channel || 'WhatsApp',
         language: data.language || 'Hinglish',
-        timestamp: new Date().toISOString(),
         // Defaults to Simulated rather than Sent: without a dispatch result
         // the honest claim is that the message was recorded, not delivered.
         status: data.status || 'Simulated',

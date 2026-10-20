@@ -1,7 +1,20 @@
-import { Router } from 'express';
-import { logger, route } from '../logger';
+import { Router, Request, Response } from 'express';
+import { logger } from '../logger';
 import { ticketRepo, vendorRepo } from '../database/repositories';
 import { requireAuth, requireManager, canAccessAllTickets, canAccessFlat } from '../auth/authMiddleware';
+import { closeRefusal, escalateRefusal } from '../services/ticketRules';
+import { checkAttachments } from '../services/storage';
+import { validateBody, validateParams, validateQuery } from './validate';
+import {
+  idParams,
+  type IdParams,
+  listTicketsQuery,
+  createTicketBody,
+  updateTicketBody,
+  assignVendorBody,
+  escalateBody,
+  closeBody,
+} from './schemas';
 
 /**
  * The ticket lifecycle. Residents are scoped to their own flat throughout;
@@ -9,27 +22,29 @@ import { requireAuth, requireManager, canAccessAllTickets, canAccessFlat } from 
  */
 const router = Router();
 
-router.get('/tickets', requireAuth, route(async (req, res) => {
-  const { query, category, urgency, status } = req.query;
+router.get('/tickets', requireAuth, validateQuery(listTicketsQuery), async (req, res) => {
+  const { query, category, urgency, status } = req.query as Record<string, string | undefined>;
   const user = req.user!;
 
   // Managers see the whole society; residents are scoped to their own flat in
   // the query itself, so no other flat's tickets are ever loaded.
   const flatScope = canAccessAllTickets(user) ? undefined : user.flatNumber;
 
-  const tickets = await ticketRepo.search(
-    (query as string) || '',
-    (category as string) || '',
-    (urgency as string) || '',
-    (status as string) || '',
-    flatScope
-  );
+  const tickets = await ticketRepo.search(query || '', category || '', urgency || '', status || '', flatScope);
 
-  logger.info('Tickets listed', { count: tickets.length, role: user.role, flatScope, query, category, urgency, status });
+  logger.info('Tickets listed', {
+    count: tickets.length,
+    role: user.role,
+    flatScope,
+    query,
+    category,
+    urgency,
+    status,
+  });
   res.json({ count: tickets.length, tickets });
-}));
+});
 
-router.get('/tickets/:id', requireAuth, route(async (req, res) => {
+router.get('/tickets/:id', requireAuth, validateParams(idParams), async (req: Request<IdParams>, res: Response) => {
   const ticket = await ticketRepo.findById(req.params.id);
   if (!ticket) {
     logger.warn('Ticket not found', { ticketId: req.params.id });
@@ -41,14 +56,10 @@ router.get('/tickets/:id', requireAuth, route(async (req, res) => {
   }
   logger.info('Ticket retrieved', { ticketId: req.params.id });
   res.json(ticket);
-}));
+});
 
-router.post('/tickets', requireAuth, route(async (req, res) => {
+router.post('/tickets', requireAuth, validateBody(createTicketBody), async (req, res) => {
   const { flatNumber, residentName, residentPhone, issueCategory, description, urgency, images } = req.body;
-  if (!description || !issueCategory) {
-    logger.warn('Ticket creation failed - missing fields', { description: !!description, issueCategory: !!issueCategory });
-    return res.status(400).json({ error: 'Missing required ticket fields' });
-  }
 
   // Identity comes from the token, not the body: a resident may only file
   // against their own flat. Managers may file on someone's behalf, so the
@@ -56,14 +67,17 @@ router.post('/tickets', requireAuth, route(async (req, res) => {
   const user = req.user!;
   const isManager = canAccessAllTickets(user);
 
+  const attachmentProblem = await checkAttachments(user.id, images);
+  if (attachmentProblem) return res.status(400).json({ error: attachmentProblem });
+
   let ticket = await ticketRepo.create({
-    flatNumber: isManager ? (flatNumber || user.flatNumber) : user.flatNumber,
-    residentName: isManager ? (residentName || user.name) : user.name,
-    residentPhone: residentPhone || '+91 98000 00000',
+    flatNumber: isManager ? flatNumber || user.flatNumber : user.flatNumber,
+    residentName: isManager ? residentName || user.name : user.name,
+    residentPhone,
     issueCategory,
     description,
-    urgency: urgency || 'Medium',
-    images: images || [],
+    urgency,
+    images,
     residentId: isManager ? undefined : user.id,
   });
 
@@ -76,86 +90,107 @@ router.post('/tickets', requireAuth, route(async (req, res) => {
 
   logger.info('Ticket created', { ticketId: ticket.id, category: ticket.issueCategory, urgency: ticket.urgency });
   res.status(201).json(ticket);
-}));
+});
 
-router.patch('/tickets/:id', requireManager, route(async (req, res) => {
-  // Whitelisted. req.body used to be spread straight into the Prisma update,
-  // which let a caller write any column on the row, including its id and
-  // timestamps.
-  const updates: Record<string, unknown> = {};
-  for (const field of ['status', 'urgency', 'description', 'issueCategory', 'estimatedEta'] as const) {
-    if (req.body[field] !== undefined) updates[field] = req.body[field];
-  }
+router.patch(
+  '/tickets/:id',
+  requireManager,
+  validateParams(idParams),
+  validateBody(updateTicketBody),
+  async (req: Request<IdParams>, res: Response) => {
+    // The schema strips everything but the whitelisted fields; req.body used to
+    // be spread straight into the Prisma update.
+    const updated = await ticketRepo.update(req.params.id, req.body);
+    if (!updated) {
+      logger.warn('Ticket update failed - not found', { ticketId: req.params.id });
+      return res.status(404).json({ error: 'Ticket not found' });
+    }
+    logger.info('Ticket updated', { ticketId: req.params.id });
+    res.json(updated);
+  },
+);
 
-  if (Object.keys(updates).length === 0) {
-    return res.status(400).json({ error: 'No updatable fields provided' });
-  }
-
-  const updated = await ticketRepo.update(req.params.id, updates);
-  if (!updated) {
-    logger.warn('Ticket update failed - not found', { ticketId: req.params.id });
-    return res.status(404).json({ error: 'Ticket not found' });
-  }
-  logger.info('Ticket updated', { ticketId: req.params.id });
-  res.json(updated);
-}));
-
-router.post('/tickets/:id/assign', requireManager, route(async (req, res) => {
-  const { vendorId, estimatedEta } = req.body;
-  if (!vendorId) {
-    logger.warn('Vendor assignment failed - missing vendorId', { ticketId: req.params.id });
-    return res.status(400).json({ error: 'vendorId is required' });
-  }
-  const ticket = await ticketRepo.assignVendor(req.params.id, vendorId, estimatedEta || '30 mins');
-  if (!ticket) {
-    logger.warn('Vendor assignment failed - not found', { ticketId: req.params.id, vendorId });
-    return res.status(404).json({ error: 'Ticket or Vendor not found' });
-  }
-  logger.info('Vendor assigned', { ticketId: req.params.id, vendorId, estimatedEta });
-  res.json(ticket);
-}));
+router.post(
+  '/tickets/:id/assign',
+  requireManager,
+  validateParams(idParams),
+  validateBody(assignVendorBody),
+  async (req: Request<IdParams>, res: Response) => {
+    const { vendorId, estimatedEta } = req.body;
+    const ticket = await ticketRepo.assignVendor(req.params.id, vendorId, estimatedEta || '30 mins');
+    if (!ticket) {
+      logger.warn('Vendor assignment failed - not found', { ticketId: req.params.id, vendorId });
+      return res.status(404).json({ error: 'Ticket or Vendor not found' });
+    }
+    logger.info('Vendor assigned', { ticketId: req.params.id, vendorId, estimatedEta });
+    res.json(ticket);
+  },
+);
 
 // Residents may escalate their own stuck ticket; managers may escalate any.
-router.post('/tickets/:id/escalate', requireAuth, route(async (req, res) => {
-  const existing = await ticketRepo.findById(req.params.id);
-  if (!existing) {
-    logger.warn('Escalation failed - ticket not found', { ticketId: req.params.id });
-    return res.status(404).json({ error: 'Ticket not found' });
-  }
-  if (!canAccessFlat(req.user!, existing.flatNumber)) {
-    logger.warn('Escalation denied', { ticketId: req.params.id, userId: req.user!.id });
-    return res.status(403).json({ error: 'You do not have access to this ticket' });
-  }
+router.post(
+  '/tickets/:id/escalate',
+  requireAuth,
+  validateParams(idParams),
+  validateBody(escalateBody),
+  async (req: Request<IdParams>, res: Response) => {
+    const user = req.user!;
+    const existing = await ticketRepo.findById(req.params.id);
+    if (!existing) {
+      logger.warn('Escalation failed - ticket not found', { ticketId: req.params.id });
+      return res.status(404).json({ error: 'Ticket not found' });
+    }
+    if (!canAccessFlat(user, existing.flatNumber)) {
+      logger.warn('Escalation denied', { ticketId: req.params.id, userId: user.id });
+      return res.status(403).json({ error: 'You do not have access to this ticket' });
+    }
 
-  const { reason } = req.body;
-  const ticket = await ticketRepo.escalateTicket(req.params.id, reason || 'Manual Manager Escalation');
-  if (!ticket) {
-    logger.warn('Escalation failed - ticket not found', { ticketId: req.params.id });
-    return res.status(404).json({ error: 'Ticket not found' });
-  }
-  logger.info('Ticket escalated', { ticketId: req.params.id, reason });
-  res.json(ticket);
-}));
+    const refusal = escalateRefusal(existing, canAccessAllTickets(user));
+    if (refusal) {
+      logger.warn('Escalation refused', { ticketId: req.params.id, status: existing.status, role: user.role });
+      return res.status(409).json({ error: refusal });
+    }
 
-// Residents may close their own ticket once it is done; managers may close any.
-router.post('/tickets/:id/close', requireAuth, route(async (req, res) => {
-  const existing = await ticketRepo.findById(req.params.id);
-  if (!existing) {
-    logger.warn('Close ticket failed - not found', { ticketId: req.params.id });
-    return res.status(404).json({ error: 'Ticket not found' });
-  }
-  if (!canAccessFlat(req.user!, existing.flatNumber)) {
-    logger.warn('Close denied', { ticketId: req.params.id, userId: req.user!.id });
-    return res.status(403).json({ error: 'You do not have access to this ticket' });
-  }
+    const { reason } = req.body;
+    const ticket = await ticketRepo.escalateTicket(req.params.id, reason || 'Manual Manager Escalation');
+    logger.info('Ticket escalated', { ticketId: req.params.id, reason });
+    res.json(ticket);
+  },
+);
 
-  const ticket = await ticketRepo.update(req.params.id, { status: 'Closed' });
-  if (!ticket) {
-    logger.warn('Close ticket failed - not found', { ticketId: req.params.id });
-    return res.status(404).json({ error: 'Ticket not found' });
-  }
-  logger.info('Ticket closed', { ticketId: req.params.id });
-  res.json(ticket);
-}));
+// Residents may close their own ticket once work has been done; managers may close any.
+router.post(
+  '/tickets/:id/close',
+  requireAuth,
+  validateParams(idParams),
+  validateBody(closeBody),
+  async (req: Request<IdParams>, res: Response) => {
+    const user = req.user!;
+    const existing = await ticketRepo.findById(req.params.id);
+    if (!existing) {
+      logger.warn('Close ticket failed - not found', { ticketId: req.params.id });
+      return res.status(404).json({ error: 'Ticket not found' });
+    }
+    if (!canAccessFlat(user, existing.flatNumber)) {
+      logger.warn('Close denied', { ticketId: req.params.id, userId: user.id });
+      return res.status(403).json({ error: 'You do not have access to this ticket' });
+    }
+
+    const refusal = closeRefusal(existing, canAccessAllTickets(user));
+    if (refusal) {
+      logger.warn('Close refused', { ticketId: req.params.id, status: existing.status, role: user.role });
+      return res.status(409).json({ error: refusal });
+    }
+
+    const { feedback, rating } = req.body;
+    const ticket = await ticketRepo.update(req.params.id, {
+      status: 'Closed',
+      ...(feedback ? { residentFeedback: feedback } : {}),
+      ...(rating ? { residentRating: rating } : {}),
+    });
+    logger.info('Ticket closed', { ticketId: req.params.id });
+    res.json(ticket);
+  },
+);
 
 export default router;

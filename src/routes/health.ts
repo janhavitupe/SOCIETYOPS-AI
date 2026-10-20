@@ -1,5 +1,6 @@
 import { Router } from 'express';
-import { logger, route } from '../logger';
+import { logger } from '../logger';
+import { version } from '../../package.json';
 import { prisma } from '../database/prisma';
 
 /**
@@ -21,7 +22,7 @@ router.get('/health', async (req, res) => {
   res.status(healthy ? 200 : 503).json({
     status: healthy ? 'ok' : 'degraded',
     service: 'SocietyOps AI Maintenance Coordination System',
-    version: '1.0.0',
+    version,
     database,
     timestamp: new Date().toISOString(),
   });

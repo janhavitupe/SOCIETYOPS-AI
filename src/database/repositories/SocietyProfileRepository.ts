@@ -1,4 +1,4 @@
-import { PrismaClient, SocietyProfile as PrismaProfile } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 
 export class SocietyProfileRepository {
   constructor(private prisma: PrismaClient) {}
@@ -8,14 +8,26 @@ export class SocietyProfileRepository {
     return profile;
   }
 
-  async update(updates: any): Promise<any> {
+  /** Callers pass only validated, whitelisted fields (routes/schemas). */
+  async update(updates: Prisma.SocietyProfileUpdateInput): Promise<any> {
     const existing = await this.prisma.societyProfile.findFirst();
     if (!existing) {
-      return this.prisma.societyProfile.create({ data: { ...updates, updatedAt: new Date().toISOString() } });
+      const blank: Prisma.SocietyProfileCreateInput = {
+        id: 'society-main',
+        societyName: '',
+        address: '',
+        tagline: '',
+        introText: '',
+        maintenanceContact: '',
+        maintenancePhone: '',
+        maintenanceEmail: '',
+        highlights: [],
+        lastUpdatedBy: '',
+      };
+      return this.prisma.societyProfile.create({
+        data: { ...blank, ...(updates as Partial<Prisma.SocietyProfileCreateInput>) },
+      });
     }
-    return this.prisma.societyProfile.update({
-      where: { id: existing.id },
-      data: { ...updates, updatedAt: new Date().toISOString() },
-    });
+    return this.prisma.societyProfile.update({ where: { id: existing.id }, data: updates });
   }
 }

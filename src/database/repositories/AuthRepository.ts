@@ -1,11 +1,11 @@
-import { hashPassword, verifyPassword } from '../../auth/authUtils';
+import { verifyPassword } from '../../auth/authUtils';
 import { PrismaClient } from '@prisma/client';
 
 export class AuthRepository {
   constructor(private prisma: PrismaClient) {}
 
   async createResidentWithAuth(residentData: any, passwordHash: string): Promise<any> {
-    const now = new Date().toISOString();
+    const now = new Date();
     const residentId = `RES-${Date.now()}`;
     const accessToken = `TOK-${Date.now().toString().slice(-6)}`;
 
@@ -21,7 +21,6 @@ export class AuthRepository {
         accessToken,
         tokensGenerated: 0,
         lastActiveAt: now,
-        createdAt: now,
         passwordHashes: {
           create: {
             hash: passwordHash,

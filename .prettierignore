@@ -1,0 +1,7 @@
+dist
+node_modules
+coverage
+uploads
+.test-uploads
+package-lock.json
+prisma/migrations

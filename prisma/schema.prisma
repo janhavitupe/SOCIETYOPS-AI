@@ -21,7 +21,7 @@ model Ticket {
   estimatedEta       String?
   images             String[]
   societyName        String
-  lastFollowupAt     String?
+  lastFollowupAt     DateTime?
   escalationReason   String?
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
@@ -52,7 +52,7 @@ model Ticket {
 
 model TimelineEvent {
   id        String   @id @default(cuid())
-  timestamp String
+  timestamp DateTime @default(now())
   title     String
   description String
   actor     String
@@ -94,7 +94,7 @@ model NotificationLog {
   phone         String
   message       String
   channel       String
-  timestamp     String
+  timestamp     DateTime @default(now())
   language      String
   /// Simulated | Sent | Failed. It was previously hardcoded to Sent even
   /// though nothing was ever dispatched to a real provider.
@@ -112,7 +112,7 @@ model AgentActivityLog {
   agentName String
   action    String
   details   String
-  timestamp String
+  timestamp DateTime @default(now())
   ticketId  String?
   ticket    Ticket?  @relation(fields: [ticketId], references: [id], onDelete: SetNull)
   deletedAt DateTime?
@@ -131,7 +131,7 @@ model SocietyProfile {
   maintenanceEmail   String
   highlights         String[]
   lastUpdatedBy      String
-  updatedAt          String
+  updatedAt          DateTime @updatedAt
 }
 
 model ResidentProfile {
@@ -144,8 +144,8 @@ model ResidentProfile {
   status         String   @default("active")
   accessToken    String
   tokensGenerated Int     @default(0)
-  lastActiveAt   String?
-  createdAt      String
+  lastActiveAt   DateTime?
+  createdAt      DateTime @default(now())
   deletedAt      DateTime?
 
   passwordHashes ResidentPassword[]

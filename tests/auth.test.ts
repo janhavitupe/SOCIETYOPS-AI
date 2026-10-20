@@ -125,3 +125,84 @@ describe('role separation', () => {
     }
   });
 });
+
+describe('registration', () => {
+  const flatNumber = 'T-900';
+  const cleanup = () => prisma.residentProfile.deleteMany({ where: { flatNumber } });
+
+  beforeAll(cleanup);
+  afterAll(cleanup);
+
+  it('registers a resident and stores the phone in canonical form', async () => {
+    const res = await api
+      .post('/api/auth/register')
+      .send({ name: 'Test Person', flatNumber, phone: '98111 22333', password: 'longenough' });
+    expect(res.status).toBe(201);
+    expect(res.body.token).toBeTruthy();
+
+    const row = await prisma.residentProfile.findFirst({ where: { flatNumber } });
+    expect(row?.phone).toBe('+919811122333');
+  });
+
+  it('treats a differently formatted number as the same person', async () => {
+    const res = await api
+      .post('/api/auth/register')
+      .send({ name: 'Test Person', flatNumber, phone: '+91-98111-22333', password: 'longenough' });
+    expect(res.status).toBe(409);
+  });
+
+  it('logs in with the number in any format', async () => {
+    const res = await api
+      .post('/api/auth/login')
+      .send({ flatNumber: 't-900', phone: '098111 22333', password: 'longenough' });
+    expect(res.status).toBe(200);
+  });
+
+  it('rejects a short password', async () => {
+    const res = await api
+      .post('/api/auth/register')
+      .send({ name: 'Short', flatNumber, phone: '98111 44444', password: 'short' });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects something that is not a phone number', async () => {
+    const res = await api
+      .post('/api/auth/register')
+      .send({ name: 'Bad Phone', flatNumber, phone: '123', password: 'longenough' });
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('society profile', () => {
+  it('saves whitelisted fields and ignores the rest', async () => {
+    const before = await prisma.societyProfile.findFirst();
+    const res = await api
+      .post('/api/society-profile')
+      .set(bearer(maintenanceToken))
+      .send({ tagline: 'Updated by test', id: 'hijacked', updatedAt: '1999-01-01', lastUpdatedBy: 'Mallory' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.id).toBe(before!.id);
+    expect(res.body.tagline).toBe('Updated by test');
+    expect(res.body.lastUpdatedBy).not.toBe('Mallory');
+
+    await prisma.societyProfile.update({ where: { id: before!.id }, data: { tagline: before!.tagline } });
+  });
+
+  it('rejects a body with nothing to update', async () => {
+    const res = await api.post('/api/society-profile').set(bearer(maintenanceToken)).send({ id: 'x' });
+    expect(res.status).toBe(400);
+  });
+
+  it('denies a resident', async () => {
+    const res = await api.post('/api/society-profile').set(bearer(residentToken)).send({ tagline: 'x' });
+    expect(res.status).toBe(403);
+  });
+});
+
+describe('error responses', () => {
+  it('answers malformed JSON with 400, not 500', async () => {
+    const res = await api.post('/api/auth/login').set('Content-Type', 'application/json').send('{"flatNumber": ');
+    expect(res.status).toBe(400);
+  });
+});

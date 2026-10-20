@@ -1,7 +1,21 @@
 import React, { useEffect, useState } from 'react';
-import { Ticket, Vendor, AgentActivityLog, IssueCategory, UrgencyLevel, TicketStatus, SocietyProfile, ResidentProfile, DailyReport } from '../types';
+import { Ticket, Vendor, AgentActivityLog, SocietyProfile, ResidentProfile, DailyReport } from '../types';
 import { api } from '../lib/api';
-import { Wrench, Clock, CheckCircle2, AlertTriangle, Search, Filter, ShieldAlert, ArrowUpRight, UserCheck, RefreshCw, Zap, Eye, MoreHorizontal, ChevronRight, BarChart3, Radio, Building2, KeyRound, Sparkles, Users2 } from 'lucide-react';
+import {
+  Wrench,
+  Clock,
+  CheckCircle2,
+  Search,
+  Filter,
+  ShieldAlert,
+  RefreshCw,
+  Eye,
+  Radio,
+  Building2,
+  KeyRound,
+  Sparkles,
+  Users2,
+} from 'lucide-react';
 
 interface ManagerDashboardProps {
   tickets: Ticket[];
@@ -46,13 +60,13 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
   }, [societyProfile?.introText]);
 
   // Statistics calculation
-  const totalOpen = tickets.filter(t => t.status === 'Open').length;
-  const inProgress = tickets.filter(t => t.status === 'Vendor Assigned' || t.status === 'In Progress').length;
-  const resolvedToday = tickets.filter(t => t.status === 'Resolved' || t.status === 'Closed').length;
-  const highPriority = tickets.filter(t => t.urgency === 'High' || t.status === 'Escalated').length;
+  const totalOpen = tickets.filter((t) => t.status === 'Open').length;
+  const inProgress = tickets.filter((t) => t.status === 'Vendor Assigned' || t.status === 'In Progress').length;
+  const resolvedToday = tickets.filter((t) => t.status === 'Resolved' || t.status === 'Closed').length;
+  const highPriority = tickets.filter((t) => t.urgency === 'High' || t.status === 'Escalated').length;
 
   // Filtered tickets
-  const filteredTickets = tickets.filter(t => {
+  const filteredTickets = tickets.filter((t) => {
     const q = searchQuery.toLowerCase();
     const matchesQuery =
       !searchQuery ||
@@ -69,7 +83,16 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
     return matchesQuery && matchesCategory && matchesUrgency && matchesStatus;
   });
 
-  const categories = ['All', 'Plumbing', 'Electrical', 'Lift & Elevator', 'Carpentry & Locks', 'AC & Appliances', 'Cleaning & Pest', 'Security & Intercom'];
+  const categories = [
+    'All',
+    'Plumbing',
+    'Electrical',
+    'Lift & Elevator',
+    'Carpentry & Locks',
+    'AC & Appliances',
+    'Cleaning & Pest',
+    'Security & Intercom',
+  ];
   const urgencies = ['All', 'High', 'Medium', 'Low'];
   const statuses = ['All', 'Open', 'Vendor Assigned', 'In Progress', 'Escalated', 'Resolved', 'Closed'];
 
@@ -86,7 +109,8 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
     try {
       await api('/api/society-profile', {
         method: 'POST',
-        body: JSON.stringify({ ...societyProfile, introText, lastUpdatedBy: 'Maintenance Team' }),
+        // Only the edited field; the server records who made the change.
+        body: JSON.stringify({ introText }),
       });
       await onRefresh();
     } catch (err) {
@@ -107,12 +131,12 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-      
       {/* Top Banner & Control Header */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 pb-2 border-b border-[#E5E5E1] dark:border-[#2D2D2A]">
         <div>
           <h1 className="text-3xl sm:text-4xl lg:text-5xl font-light uppercase tracking-tighter leading-none text-[#1A1A1A] dark:text-white">
-            Operations<br />
+            Operations
+            <br />
             <span className="text-[#6366F1] font-normal">Manager Control</span>
           </h1>
           <p className="text-xs text-[#71716A] dark:text-slate-400 mt-2 font-medium uppercase tracking-wider">
@@ -128,7 +152,9 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
           <button
             onClick={onRefresh}
             className={`px-3.5 py-2 rounded border text-xs font-bold uppercase tracking-wider flex items-center space-x-1.5 transition-all cursor-pointer ${
-              isDarkMode ? 'bg-[#222220] border-[#2D2D2A] text-slate-200 hover:bg-[#2A2A28]' : 'bg-white border-[#E5E5E1] text-[#1A1A1A] hover:bg-[#F8F8F7] shadow-2xs'
+              isDarkMode
+                ? 'bg-[#222220] border-[#2D2D2A] text-slate-200 hover:bg-[#2A2A28]'
+                : 'bg-white border-[#E5E5E1] text-[#1A1A1A] hover:bg-[#F8F8F7] shadow-2xs'
             }`}
           >
             <RefreshCw className="w-3.5 h-3.5 text-[#6366F1]" />
@@ -138,24 +164,34 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
       </div>
 
       {/* Society Intro / Maintainer Profile Panel */}
-      <div className={`rounded-lg border p-4 space-y-4 ${isDarkMode ? 'bg-[#181817] border-[#2D2D2A]' : 'bg-white border-[#E5E5E1] shadow-2xs'}`}>
+      <div
+        className={`rounded-lg border p-4 space-y-4 ${isDarkMode ? 'bg-[#181817] border-[#2D2D2A]' : 'bg-white border-[#E5E5E1] shadow-2xs'}`}
+      >
         <div className="flex items-start justify-between gap-3">
           <div>
             <div className="flex items-center space-x-2 text-[#6366F1] font-bold text-[10px] uppercase tracking-wider">
               <Building2 className="w-3.5 h-3.5" /> Society Profile
             </div>
-            <h2 className="text-xl font-semibold text-[#1A1A1A] dark:text-white mt-1">{societyProfile?.societyName || 'Society Profile'}</h2>
-            <p className="text-sm text-[#71716A] dark:text-slate-400 mt-1">{societyProfile?.tagline || 'Maintenance operations profile managed by the society maintainer.'}</p>
+            <h2 className="text-xl font-semibold text-[#1A1A1A] dark:text-white mt-1">
+              {societyProfile?.societyName || 'Society Profile'}
+            </h2>
+            <p className="text-sm text-[#71716A] dark:text-slate-400 mt-1">
+              {societyProfile?.tagline || 'Maintenance operations profile managed by the society maintainer.'}
+            </p>
           </div>
           <div className="text-right text-xs text-[#888888]">
             <div className="font-semibold">Managed by</div>
-            <div className="text-[#1A1A1A] dark:text-white">{societyProfile?.maintenanceContact || 'Maintenance Team'}</div>
+            <div className="text-[#1A1A1A] dark:text-white">
+              {societyProfile?.maintenanceContact || 'Maintenance Team'}
+            </div>
           </div>
         </div>
 
         <div className="grid md:grid-cols-[1.2fr_0.8fr] gap-4">
           <div className="space-y-2">
-            <label className="text-[10px] uppercase tracking-wider font-bold text-[#888888]">Introduction message</label>
+            <label className="text-[10px] uppercase tracking-wider font-bold text-[#888888]">
+              Introduction message
+            </label>
             <textarea
               value={introText}
               onChange={(e) => setIntroText(e.target.value)}
@@ -171,15 +207,25 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
             </button>
           </div>
 
-          <div className={`rounded-lg border p-3 space-y-2 ${isDarkMode ? 'bg-[#121211] border-[#2D2D2A]' : 'bg-[#FAFAF9] border-[#E5E5E1]'}`}>
+          <div
+            className={`rounded-lg border p-3 space-y-2 ${isDarkMode ? 'bg-[#121211] border-[#2D2D2A]' : 'bg-[#FAFAF9] border-[#E5E5E1]'}`}
+          >
             <div className="flex items-center space-x-2 text-[#6366F1] font-bold text-[10px] uppercase tracking-wider">
               <KeyRound className="w-3.5 h-3.5" /> Admin access overview
             </div>
             <div className="text-sm text-[#1A1A1A] dark:text-white">{societyProfile?.address || 'Powai, Mumbai'}</div>
-            <div className="text-xs text-[#71716A] dark:text-slate-400">{societyProfile?.maintenancePhone || '+91 98765 11111'} • {societyProfile?.maintenanceEmail || 'maintenance@srerwa.org'}</div>
+            <div className="text-xs text-[#71716A] dark:text-slate-400">
+              {societyProfile?.maintenancePhone || '+91 98765 11111'} •{' '}
+              {societyProfile?.maintenanceEmail || 'maintenance@srerwa.org'}
+            </div>
             <div className="flex flex-wrap gap-2 pt-2">
               {societyProfile?.highlights?.map((item) => (
-                <span key={item} className="px-2 py-1 rounded-full bg-indigo-50 text-[#6366F1] text-[10px] font-semibold">{item}</span>
+                <span
+                  key={item}
+                  className="px-2 py-1 rounded-full bg-indigo-50 text-[#6366F1] text-[10px] font-semibold"
+                >
+                  {item}
+                </span>
               ))}
             </div>
           </div>
@@ -188,61 +234,63 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
 
       {/* KPI Stats Grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        
-        <div className={`p-4 rounded-lg border transition-all ${isDarkMode ? 'bg-[#181817] border-[#2D2D2A]' : 'bg-white border-[#E5E5E1] shadow-2xs'}`}>
+        <div
+          className={`p-4 rounded-lg border transition-all ${isDarkMode ? 'bg-[#181817] border-[#2D2D2A]' : 'bg-white border-[#E5E5E1] shadow-2xs'}`}
+        >
           <div className="flex items-center justify-between text-slate-500 mb-2">
             <span className="text-[10px] uppercase tracking-widest font-bold text-[#888888]">Open Queue</span>
             <Clock className="w-4 h-4 text-amber-500" />
           </div>
           <div className="text-3xl font-semibold tracking-tight text-[#1A1A1A] dark:text-white">{totalOpen}</div>
-          <p className="text-[11px] text-amber-600 dark:text-amber-400 font-semibold mt-1">
-            Requires Dispatch
-          </p>
+          <p className="text-[11px] text-amber-600 dark:text-amber-400 font-semibold mt-1">Requires Dispatch</p>
         </div>
 
-        <div className={`p-4 rounded-lg border transition-all ${isDarkMode ? 'bg-[#181817] border-[#2D2D2A]' : 'bg-white border-[#E5E5E1] shadow-2xs'}`}>
+        <div
+          className={`p-4 rounded-lg border transition-all ${isDarkMode ? 'bg-[#181817] border-[#2D2D2A]' : 'bg-white border-[#E5E5E1] shadow-2xs'}`}
+        >
           <div className="flex items-center justify-between text-slate-500 mb-2">
             <span className="text-[10px] uppercase tracking-widest font-bold text-[#888888]">In Progress</span>
             <Wrench className="w-4 h-4 text-[#6366F1]" />
           </div>
           <div className="text-3xl font-semibold tracking-tight text-[#1A1A1A] dark:text-white">{inProgress}</div>
-          <p className="text-[11px] text-[#6366F1] font-semibold mt-1">
-            Vendors Active
-          </p>
+          <p className="text-[11px] text-[#6366F1] font-semibold mt-1">Vendors Active</p>
         </div>
 
-        <div className={`p-4 rounded-lg border transition-all ${isDarkMode ? 'bg-[#181817] border-[#2D2D2A]' : 'bg-white border-[#E5E5E1] shadow-2xs'}`}>
+        <div
+          className={`p-4 rounded-lg border transition-all ${isDarkMode ? 'bg-[#181817] border-[#2D2D2A]' : 'bg-white border-[#E5E5E1] shadow-2xs'}`}
+        >
           <div className="flex items-center justify-between text-slate-500 mb-2">
             <span className="text-[10px] uppercase tracking-widest font-bold text-[#888888]">Escalated / High</span>
             <ShieldAlert className="w-4 h-4 text-[#EF4444]" />
           </div>
           <div className="text-3xl font-semibold tracking-tight text-[#EF4444]">{highPriority}</div>
-          <p className="text-[11px] text-[#EF4444] font-semibold mt-1">
-            Priority Action
-          </p>
+          <p className="text-[11px] text-[#EF4444] font-semibold mt-1">Priority Action</p>
         </div>
 
-        <div className={`p-4 rounded-lg border transition-all ${isDarkMode ? 'bg-[#181817] border-[#2D2D2A]' : 'bg-white border-[#E5E5E1] shadow-2xs'}`}>
+        <div
+          className={`p-4 rounded-lg border transition-all ${isDarkMode ? 'bg-[#181817] border-[#2D2D2A]' : 'bg-white border-[#E5E5E1] shadow-2xs'}`}
+        >
           <div className="flex items-center justify-between text-slate-500 mb-2">
             <span className="text-[10px] uppercase tracking-widest font-bold text-[#888888]">Resolved Today</span>
             <CheckCircle2 className="w-4 h-4 text-[#10B981]" />
           </div>
           <div className="text-3xl font-semibold tracking-tight text-[#10B981]">{resolvedToday}</div>
-          <p className="text-[11px] text-[#10B981] font-semibold mt-1">
-            Avg: 18m response
-          </p>
+          <p className="text-[11px] text-[#10B981] font-semibold mt-1">Avg: 18m response</p>
         </div>
-
       </div>
 
       {/* Resident Access & Admin Token Panel */}
-      <div className={`rounded-lg border p-4 ${isDarkMode ? 'bg-[#181817] border-[#2D2D2A]' : 'bg-white border-[#E5E5E1] shadow-2xs'}`}>
+      <div
+        className={`rounded-lg border p-4 ${isDarkMode ? 'bg-[#181817] border-[#2D2D2A]' : 'bg-white border-[#E5E5E1] shadow-2xs'}`}
+      >
         <div className="flex items-center justify-between mb-3">
           <div>
             <div className="flex items-center space-x-2 text-[#6366F1] font-bold text-[10px] uppercase tracking-wider">
               <Users2 className="w-3.5 h-3.5" /> Residents & access tokens
             </div>
-            <h3 className="text-lg font-semibold text-[#1A1A1A] dark:text-white mt-1">Resident profiles and token registry</h3>
+            <h3 className="text-lg font-semibold text-[#1A1A1A] dark:text-white mt-1">
+              Resident profiles and token registry
+            </h3>
           </div>
           <div className="text-right text-[10px] uppercase tracking-wider text-[#888888]">
             <div>Active residents</div>
@@ -252,7 +300,9 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
 
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
-            <thead className={`border-b ${isDarkMode ? 'bg-[#121211] border-[#2D2D2A] text-[#888888]' : 'bg-[#F9F9F8] border-[#E5E5E1] text-[#71716A]'}`}>
+            <thead
+              className={`border-b ${isDarkMode ? 'bg-[#121211] border-[#2D2D2A] text-[#888888]' : 'bg-[#F9F9F8] border-[#E5E5E1] text-[#71716A]'}`}
+            >
               <tr>
                 <th className="p-2">Name</th>
                 <th className="p-2">Flat</th>
@@ -287,12 +337,12 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
 
       {/* Main Table + Live Agent Feed Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
         {/* Left Column: Tickets Table (2 cols) */}
         <div className="lg:col-span-2 space-y-4">
-          
           {/* Filters & Search */}
-          <div className={`p-4 rounded-lg border space-y-3 ${isDarkMode ? 'bg-[#181817] border-[#2D2D2A]' : 'bg-white border-[#E5E5E1] shadow-2xs'}`}>
+          <div
+            className={`p-4 rounded-lg border space-y-3 ${isDarkMode ? 'bg-[#181817] border-[#2D2D2A]' : 'bg-white border-[#E5E5E1] shadow-2xs'}`}
+          >
             <div className="flex items-center space-x-2">
               <div className="relative flex-1">
                 <Search className="w-4 h-4 absolute left-3 top-3 text-[#888888]" />
@@ -302,7 +352,9 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Search by Ticket ID, Flat, Resident, Vendor..."
                   className={`w-full pl-9 pr-4 py-2 rounded text-xs border outline-none ${
-                    isDarkMode ? 'bg-[#121211] border-[#2D2D2A] text-white focus:border-[#6366F1]' : 'bg-[#FAFAF9] border-[#E5E5E1] text-[#1A1A1A] focus:border-[#6366F1]'
+                    isDarkMode
+                      ? 'bg-[#121211] border-[#2D2D2A] text-white focus:border-[#6366F1]'
+                      : 'bg-[#FAFAF9] border-[#E5E5E1] text-[#1A1A1A] focus:border-[#6366F1]'
                   }`}
                 />
               </div>
@@ -317,10 +369,16 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
                 value={selectedCategory}
                 onChange={(e) => setSelectedCategory(e.target.value)}
                 className={`px-2.5 py-1 rounded border text-xs font-medium outline-none ${
-                  isDarkMode ? 'bg-[#222220] border-[#2D2D2A] text-slate-200' : 'bg-[#FAFAF9] border-[#E5E5E1] text-[#1A1A1A]'
+                  isDarkMode
+                    ? 'bg-[#222220] border-[#2D2D2A] text-slate-200'
+                    : 'bg-[#FAFAF9] border-[#E5E5E1] text-[#1A1A1A]'
                 }`}
               >
-                {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                {categories.map((cat) => (
+                  <option key={cat} value={cat}>
+                    {cat}
+                  </option>
+                ))}
               </select>
 
               <span className="text-[#888888] font-bold text-[10px] uppercase tracking-wider ml-2 mr-1">Urgency:</span>
@@ -328,10 +386,16 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
                 value={selectedUrgency}
                 onChange={(e) => setSelectedUrgency(e.target.value)}
                 className={`px-2.5 py-1 rounded border text-xs font-medium outline-none ${
-                  isDarkMode ? 'bg-[#222220] border-[#2D2D2A] text-slate-200' : 'bg-[#FAFAF9] border-[#E5E5E1] text-[#1A1A1A]'
+                  isDarkMode
+                    ? 'bg-[#222220] border-[#2D2D2A] text-slate-200'
+                    : 'bg-[#FAFAF9] border-[#E5E5E1] text-[#1A1A1A]'
                 }`}
               >
-                {urgencies.map(u => <option key={u} value={u}>{u}</option>)}
+                {urgencies.map((u) => (
+                  <option key={u} value={u}>
+                    {u}
+                  </option>
+                ))}
               </select>
 
               <span className="text-[#888888] font-bold text-[10px] uppercase tracking-wider ml-2 mr-1">Status:</span>
@@ -339,16 +403,24 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
                 value={selectedStatus}
                 onChange={(e) => setSelectedStatus(e.target.value)}
                 className={`px-2.5 py-1 rounded border text-xs font-medium outline-none ${
-                  isDarkMode ? 'bg-[#222220] border-[#2D2D2A] text-slate-200' : 'bg-[#FAFAF9] border-[#E5E5E1] text-[#1A1A1A]'
+                  isDarkMode
+                    ? 'bg-[#222220] border-[#2D2D2A] text-slate-200'
+                    : 'bg-[#FAFAF9] border-[#E5E5E1] text-[#1A1A1A]'
                 }`}
               >
-                {statuses.map(s => <option key={s} value={s}>{s}</option>)}
+                {statuses.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
               </select>
             </div>
           </div>
 
           {/* Tickets Table */}
-          <div className={`rounded-lg border overflow-hidden ${isDarkMode ? 'bg-[#181817] border-[#2D2D2A]' : 'bg-white border-[#E5E5E1] shadow-2xs'}`}>
+          <div
+            className={`rounded-lg border overflow-hidden ${isDarkMode ? 'bg-[#181817] border-[#2D2D2A]' : 'bg-white border-[#E5E5E1] shadow-2xs'}`}
+          >
             <div className="p-4 border-b border-[#E5E5E1] dark:border-[#2D2D2A] bg-[#FBFBFA] dark:bg-[#1E1E1C] flex items-center justify-between">
               <h2 className="font-bold text-xs uppercase tracking-wider text-[#1A1A1A] dark:text-white flex items-center space-x-2">
                 <span>Real-Time Maintenance Queue ({filteredTickets.length})</span>
@@ -357,7 +429,9 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
 
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
-                <thead className={`border-b ${isDarkMode ? 'bg-[#121211] border-[#2D2D2A] text-[#888888]' : 'bg-[#F9F9F8] border-[#E5E5E1] text-[#71716A]'}`}>
+                <thead
+                  className={`border-b ${isDarkMode ? 'bg-[#121211] border-[#2D2D2A] text-[#888888]' : 'bg-[#F9F9F8] border-[#E5E5E1] text-[#71716A]'}`}
+                >
                   <tr className="text-[10px] font-bold uppercase tracking-wider">
                     <th className="p-3">ID</th>
                     <th className="p-3">ISSUE / UNIT</th>
@@ -377,15 +451,14 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
                   ) : (
                     filteredTickets.map((t) => (
                       <tr key={t.id} className="hover:bg-[#F9F9F8] dark:hover:bg-[#1E1E1C] transition-colors">
-                        
                         {/* Ticket ID */}
-                        <td className="p-3 font-mono font-bold text-[#6366F1]">
-                          #{t.id}
-                        </td>
+                        <td className="p-3 font-mono font-bold text-[#6366F1]">#{t.id}</td>
 
                         {/* Flat & Issue */}
                         <td className="p-3">
-                          <div className="font-bold text-[#1A1A1A] dark:text-slate-100">{t.description.length > 35 ? t.description.slice(0, 35) + '...' : t.description}</div>
+                          <div className="font-bold text-[#1A1A1A] dark:text-slate-100">
+                            {t.description.length > 35 ? t.description.slice(0, 35) + '...' : t.description}
+                          </div>
                           <div className="text-[11px] text-[#71716A] dark:text-slate-400">
                             Block {t.flatNumber} — {t.residentName}
                           </div>
@@ -398,8 +471,8 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
                               t.urgency === 'High'
                                 ? 'text-[#EF4444] font-black'
                                 : t.urgency === 'Medium'
-                                ? 'text-amber-600 font-bold'
-                                : 'text-slate-500 font-semibold'
+                                  ? 'text-amber-600 font-bold'
+                                  : 'text-slate-500 font-semibold'
                             }`}
                           >
                             {t.urgency}
@@ -413,10 +486,10 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
                               t.status === 'Escalated'
                                 ? 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
                                 : t.status === 'Open'
-                                ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
-                                : t.status === 'Vendor Assigned' || t.status === 'In Progress'
-                                ? 'bg-[#ECFDF5] text-[#059669] dark:bg-emerald-950/80 dark:text-emerald-300'
-                                : 'bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-300'
+                                  ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                                  : t.status === 'Vendor Assigned' || t.status === 'In Progress'
+                                    ? 'bg-[#ECFDF5] text-[#059669] dark:bg-emerald-950/80 dark:text-emerald-300'
+                                    : 'bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-300'
                             }`}
                           >
                             {t.status}
@@ -438,7 +511,6 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
                         {/* Actions */}
                         <td className="p-3 text-right">
                           <div className="flex items-center justify-end space-x-1">
-                            
                             {/* Details modal trigger */}
                             <button
                               onClick={() => onTicketSelect(t)}
@@ -457,8 +529,10 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
                                   className="text-[11px] p-1 border rounded bg-white text-black"
                                 >
                                   <option value="">Vendor...</option>
-                                  {vendors.map(v => (
-                                    <option key={v.id} value={v.id}>{v.name} ({v.rating} stars)</option>
+                                  {vendors.map((v) => (
+                                    <option key={v.id} value={v.id}>
+                                      {v.name} ({v.rating} stars)
+                                    </option>
                                   ))}
                                 </select>
                                 <button
@@ -496,10 +570,8 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
                                 Close
                               </button>
                             )}
-
                           </div>
                         </td>
-
                       </tr>
                     ))
                   )}
@@ -507,13 +579,13 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
               </table>
             </div>
           </div>
-
         </div>
 
         {/* Right Column: AI Agent Activity Feed (1 col) */}
         <div className="space-y-4">
-          
-          <div className={`p-4 rounded-lg border ${isDarkMode ? 'bg-[#181817] border-[#2D2D2A]' : 'bg-white border-[#E5E5E1] shadow-2xs'}`}>
+          <div
+            className={`p-4 rounded-lg border ${isDarkMode ? 'bg-[#181817] border-[#2D2D2A]' : 'bg-white border-[#E5E5E1] shadow-2xs'}`}
+          >
             <div className="flex items-center justify-between pb-3 border-b border-[#E5E5E1] dark:border-[#2D2D2A] mb-3">
               <h2 className="font-bold text-xs uppercase tracking-wider text-[#1A1A1A] dark:text-white flex items-center space-x-2">
                 <Radio className="w-4 h-4 text-[#6366F1] animate-pulse" />
@@ -522,14 +594,20 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
             </div>
 
             {analytics && (
-              <div className={`mb-3 rounded border p-3 text-xs space-y-2 ${isDarkMode ? 'bg-[#121211] border-[#2D2D2A]' : 'bg-[#FAFAF9] border-[#E5E5E1]'}`}>
+              <div
+                className={`mb-3 rounded border p-3 text-xs space-y-2 ${isDarkMode ? 'bg-[#121211] border-[#2D2D2A]' : 'bg-[#FAFAF9] border-[#E5E5E1]'}`}
+              >
                 <div className="flex items-center space-x-2 text-[#6366F1] font-bold uppercase tracking-wider">
                   <Sparkles className="w-3.5 h-3.5" /> Daily summary
                 </div>
                 <div className="font-semibold text-[#1A1A1A] dark:text-white">{analytics.summaryText}</div>
                 <div className="flex flex-wrap gap-2 text-[10px]">
-                  <span className="px-2 py-1 rounded bg-amber-50 text-amber-700">SLA at risk: {analytics.slaAtRiskCount || 0}</span>
-                  <span className="px-2 py-1 rounded bg-emerald-50 text-emerald-700">Top category: {analytics.frequentCategory}</span>
+                  <span className="px-2 py-1 rounded bg-amber-50 text-amber-700">
+                    SLA at risk: {analytics.slaAtRiskCount || 0}
+                  </span>
+                  <span className="px-2 py-1 rounded bg-emerald-50 text-emerald-700">
+                    Top category: {analytics.frequentCategory}
+                  </span>
                 </div>
               </div>
             )}
@@ -539,9 +617,12 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
                 <p className="text-xs text-[#888888]">No recent agent activity logs.</p>
               ) : (
                 agentLogs.map((log) => (
-                  <div key={log.id} className={`p-3 rounded border text-xs space-y-1 ${
-                    isDarkMode ? 'bg-[#121211] border-[#2D2D2A]' : 'bg-[#FAFAF9] border-[#E5E5E1]'
-                  }`}>
+                  <div
+                    key={log.id}
+                    className={`p-3 rounded border text-xs space-y-1 ${
+                      isDarkMode ? 'bg-[#121211] border-[#2D2D2A]' : 'bg-[#FAFAF9] border-[#E5E5E1]'
+                    }`}
+                  >
                     <div className="flex items-center justify-between">
                       <span className="font-bold text-[11px] uppercase tracking-wider text-[#6366F1]">
                         [{log.agentName}]
@@ -555,19 +636,14 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
                       {log.action} {log.ticketId && `#${log.ticketId}`}
                     </div>
 
-                    <p className="text-[11px] text-[#71716A] dark:text-slate-400 leading-relaxed">
-                      {log.details}
-                    </p>
+                    <p className="text-[11px] text-[#71716A] dark:text-slate-400 leading-relaxed">{log.details}</p>
                   </div>
                 ))
               )}
             </div>
           </div>
-
         </div>
-
       </div>
-
     </div>
   );
 };

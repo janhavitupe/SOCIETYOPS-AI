@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { api, getStoredToken, getStoredUser, setStoredAuth, clearStoredAuth } from '../lib/api';
 
-interface AuthContextType {
+export interface AuthContextType {
   user: any | null;
   token: string | null;
   login: (token: string, user: any) => void;
@@ -80,13 +80,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setToken(null);
     setUser(null);
     clearStoredAuth();
-    window.location.reload(); // Reload to clear any cached data
+    // A full load drops every cached query and module for the old session.
+    window.location.assign('/login');
   };
 
   return (
-    <AuthContext.Provider
-      value={{ user, token, login, logout, isAuthenticated: !!token, isLoading }}
-    >
+    <AuthContext.Provider value={{ user, token, login, logout, isAuthenticated: !!token, isLoading }}>
       {children}
     </AuthContext.Provider>
   );

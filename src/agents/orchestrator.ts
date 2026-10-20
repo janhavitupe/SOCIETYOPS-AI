@@ -2,6 +2,7 @@ import OpenAI from 'openai';
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
 import { maintenanceToolDeclarations, executeToolCall, ToolActor } from '../tools/maintenanceTools';
 import { chatRepo } from '../database/repositories';
+import { resolveImagesForModel } from '../services/storage';
 import { AgentThoughtStep, Ticket, IssueCategory, UrgencyLevel } from '../types';
 
 type AgentName = AgentThoughtStep['agentName'];
@@ -100,10 +101,6 @@ function parseArgs(raw: unknown): Record<string, any> {
   return (raw as Record<string, any>) ?? {};
 }
 
-function isImageDataUrl(value: string): boolean {
-  return /^data:image\/[a-zA-Z0-9.+-]+;base64,/.test(value);
-}
-
 function systemPrompt(actor: ToolActor): string {
   return [
     'You are SocietyOps AI, an autonomous Maintenance Coordination Agent for Indian Housing Societies and RWAs.',
@@ -133,7 +130,7 @@ function agentNameForTool(toolName: string): AgentName {
 export async function processResidentMessage(
   actor: ToolActor,
   userText: string,
-  attachedImages: string[] = []
+  attachedImages: string[] = [],
 ): Promise<AgentResponse> {
   const thoughtSteps: AgentThoughtStep[] = [];
   const ai = getClient();
@@ -190,10 +187,11 @@ async function runAgentLoop(
   actor: ToolActor,
   userText: string,
   attachedImages: string[],
-  thoughtSteps: AgentThoughtStep[]
+  thoughtSteps: AgentThoughtStep[],
 ): Promise<{ replyText: string; ticketCreated?: Ticket }> {
   const delimited = `<resident_message>\n${userText}\n</resident_message>`;
-  const images = attachedImages.filter(isImageDataUrl);
+  // Storage keys become URLs the model can fetch, or inline data when it cannot.
+  const images = await resolveImagesForModel(attachedImages);
 
   const messages: ChatCompletionMessageParam[] = [
     { role: 'system', content: systemPrompt(actor) },
@@ -203,8 +201,6 @@ async function runAgentLoop(
           role: 'user',
           content: [
             { type: 'text', text: delimited },
-            // Data URLs are accepted directly as image_url; the photo itself
-            // now reaches the model rather than just a count of attachments.
             ...images.map((url) => ({ type: 'image_url' as const, image_url: { url } })),
           ],
         }
@@ -235,6 +231,9 @@ async function runAgentLoop(
       if (!fn?.name) continue;
 
       const args = normalizeArgs(parseArgs(fn.arguments));
+      // The photos are the ones the resident attached, checked by the route.
+      // The model's own images argument was trusted before, and dropped them.
+      if (fn.name === 'create_ticket') args.images = attachedImages;
 
       let toolResult: Record<string, unknown>;
       try {
@@ -251,12 +250,8 @@ async function runAgentLoop(
         agentName: agentNameForTool(fn.name),
         toolCalled: fn.name,
         args,
-        resultSummary: toolResult.success
-          ? String(toolResult.message || 'Completed')
-          : `Refused: ${toolResult.error}`,
-        explanation: toolResult.success
-          ? `Executed ${fn.name}.`
-          : `Server refused ${fn.name}: ${toolResult.error}`,
+        resultSummary: toolResult.success ? String(toolResult.message || 'Completed') : `Refused: ${toolResult.error}`,
+        explanation: toolResult.success ? `Executed ${fn.name}.` : `Server refused ${fn.name}: ${toolResult.error}`,
       });
 
       messages.push({
@@ -277,7 +272,7 @@ async function loadHistory(actor: ToolActor): Promise<ChatCompletionMessageParam
     return turns.map((turn) =>
       turn.role === 'model'
         ? ({ role: 'assistant', content: turn.text } as ChatCompletionMessageParam)
-        : ({ role: 'user', content: turn.text } as ChatCompletionMessageParam)
+        : ({ role: 'user', content: turn.text } as ChatCompletionMessageParam),
     );
   } catch (err) {
     console.warn('Could not load chat history:', (err as Error).message);
@@ -290,37 +285,90 @@ async function runDeterministicAgentFallback(
   userText: string,
   attachedImages: string[],
   thoughtSteps: AgentThoughtStep[],
-  fallbackReason?: string
+  fallbackReason?: string,
 ): Promise<AgentResponse> {
   const lower = userText.toLowerCase();
 
   let category: IssueCategory = 'General Repairs';
-  if (lower.includes('water') || lower.includes('leak') || lower.includes('tap') || lower.includes('flush') || lower.includes('drain') || lower.includes('pipe') || lower.includes('paani')) {
+  if (
+    lower.includes('water') ||
+    lower.includes('leak') ||
+    lower.includes('tap') ||
+    lower.includes('flush') ||
+    lower.includes('drain') ||
+    lower.includes('pipe') ||
+    lower.includes('paani')
+  ) {
     category = 'Plumbing';
-  } else if (lower.includes('light') || lower.includes('power') || lower.includes('mcb') || lower.includes('wire') || lower.includes('fan') || lower.includes('electricity') || lower.includes('bijli')) {
+  } else if (
+    lower.includes('light') ||
+    lower.includes('power') ||
+    lower.includes('mcb') ||
+    lower.includes('wire') ||
+    lower.includes('fan') ||
+    lower.includes('electricity') ||
+    lower.includes('bijli')
+  ) {
     category = 'Electrical';
   } else if (lower.includes('lift') || lower.includes('elevator') || lower.includes('stuck')) {
     category = 'Lift & Elevator';
-  } else if (lower.includes('lock') || lower.includes('door') || lower.includes('key') || lower.includes('hinge') || lower.includes('darwaza')) {
+  } else if (
+    lower.includes('lock') ||
+    lower.includes('door') ||
+    lower.includes('key') ||
+    lower.includes('hinge') ||
+    lower.includes('darwaza')
+  ) {
     category = 'Carpentry & Locks';
-  } else if (lower.includes('ac') || lower.includes('geyser') || lower.includes('heater') || lower.includes('appliance')) {
+  } else if (
+    lower.includes('ac') ||
+    lower.includes('geyser') ||
+    lower.includes('heater') ||
+    lower.includes('appliance')
+  ) {
     category = 'AC & Appliances';
-  } else if (lower.includes('pest') || lower.includes('clean') || lower.includes('cockroach') || lower.includes('mosquito') || lower.includes('garbage')) {
+  } else if (
+    lower.includes('pest') ||
+    lower.includes('clean') ||
+    lower.includes('cockroach') ||
+    lower.includes('mosquito') ||
+    lower.includes('garbage')
+  ) {
     category = 'Cleaning & Pest';
-  } else if (lower.includes('intercom') || lower.includes('gate') || lower.includes('cctv') || lower.includes('security')) {
+  } else if (
+    lower.includes('intercom') ||
+    lower.includes('gate') ||
+    lower.includes('cctv') ||
+    lower.includes('security')
+  ) {
     category = 'Security & Intercom';
   }
 
   let urgency: UrgencyLevel = 'Medium';
-  if (lower.includes('urgent') || lower.includes('stuck') || lower.includes('fire') || lower.includes('smoke') || lower.includes('sewage') || lower.includes('flooding') || lower.includes('gas') || lower.includes('emergency')) {
+  if (
+    lower.includes('urgent') ||
+    lower.includes('stuck') ||
+    lower.includes('fire') ||
+    lower.includes('smoke') ||
+    lower.includes('sewage') ||
+    lower.includes('flooding') ||
+    lower.includes('gas') ||
+    lower.includes('emergency')
+  ) {
     urgency = 'High';
-  } else if (lower.includes('minor') || lower.includes('light') || lower.includes('cleaning') || lower.includes('when free') || lower.includes('aaram se')) {
+  } else if (
+    lower.includes('minor') ||
+    lower.includes('light') ||
+    lower.includes('cleaning') ||
+    lower.includes('when free') ||
+    lower.includes('aaram se')
+  ) {
     urgency = 'Low';
   }
 
   // The flat is no longer parsed out of the message: executeToolCall pins a
   // resident to their own flat regardless, so a guess here would only mislead.
-  const result = await executeToolCall(
+  const result = (await executeToolCall(
     'create_ticket',
     {
       issueCategory: category,
@@ -328,8 +376,8 @@ async function runDeterministicAgentFallback(
       urgency,
       images: attachedImages,
     },
-    actor
-  ) as { success: boolean; ticket?: Ticket; assignedVendor?: any; error?: string };
+    actor,
+  )) as { success: boolean; ticket?: Ticket; assignedVendor?: any; error?: string };
 
   if (!result.success || !result.ticket) {
     thoughtSteps.push({

@@ -1,6 +1,6 @@
 import React from 'react';
 import { NotificationLog } from '../types';
-import { X, Bell, MessageSquare, Phone, CheckCheck, Send } from 'lucide-react';
+import { X, Bell, CheckCheck } from 'lucide-react';
 
 interface NotificationsDrawerProps {
   isOpen: boolean;
@@ -28,9 +28,14 @@ export const NotificationsDrawer: React.FC<NotificationsDrawerProps> = ({
         <div className="p-4 border-b border-[#E5E5E1] dark:border-[#2D2D2A] bg-[#FBFBFA] dark:bg-[#1C1C1B] flex items-center justify-between">
           <div className="flex items-center space-x-2">
             <Bell className="w-4 h-4 text-[#6366F1]" />
-            <h2 className="font-bold text-xs uppercase tracking-wider text-[#1A1A1A] dark:text-white">Communication Dispatch Logs</h2>
+            <h2 className="font-bold text-xs uppercase tracking-wider text-[#1A1A1A] dark:text-white">
+              Communication Dispatch Logs
+            </h2>
           </div>
-          <button onClick={onClose} className="p-1 rounded text-[#888888] hover:bg-[#F0F0EE] dark:hover:bg-[#222220] cursor-pointer">
+          <button
+            onClick={onClose}
+            className="p-1 rounded text-[#888888] hover:bg-[#F0F0EE] dark:hover:bg-[#222220] cursor-pointer"
+          >
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -59,7 +64,9 @@ export const NotificationsDrawer: React.FC<NotificationsDrawerProps> = ({
                 <p className="text-[#1A1A1A] dark:text-slate-300 leading-relaxed font-sans text-xs">{notif.message}</p>
 
                 <div className="flex items-center justify-between text-[10px] text-[#888888] pt-1 border-t border-[#E5E5E1] dark:border-[#2D2D2A]">
-                  <span>Ticket #{notif.ticketId} | Lang: {notif.language}</span>
+                  <span>
+                    Ticket #{notif.ticketId} | Lang: {notif.language}
+                  </span>
                   <span className="flex items-center space-x-1 text-[#10B981] font-bold uppercase">
                     <CheckCheck className="w-3 h-3" />
                     <span>{notif.status}</span>

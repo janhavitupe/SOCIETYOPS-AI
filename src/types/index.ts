@@ -1,21 +1,15 @@
 export type UrgencyLevel = 'High' | 'Medium' | 'Low';
 
-export type TicketStatus = 
-  | 'Open' 
-  | 'Vendor Assigned' 
-  | 'In Progress' 
-  | 'Escalated' 
-  | 'Resolved' 
-  | 'Closed';
+export type TicketStatus = 'Open' | 'Vendor Assigned' | 'In Progress' | 'Escalated' | 'Resolved' | 'Closed';
 
-export type IssueCategory = 
-  | 'Plumbing' 
-  | 'Electrical' 
-  | 'Lift & Elevator' 
-  | 'Carpentry & Locks' 
-  | 'AC & Appliances' 
-  | 'Cleaning & Pest' 
-  | 'Security & Intercom' 
+export type IssueCategory =
+  | 'Plumbing'
+  | 'Electrical'
+  | 'Lift & Elevator'
+  | 'Carpentry & Locks'
+  | 'AC & Appliances'
+  | 'Cleaning & Pest'
+  | 'Security & Intercom'
   | 'General Repairs';
 
 export interface TimelineEvent {
@@ -23,7 +17,14 @@ export interface TimelineEvent {
   timestamp: string;
   title: string;
   description: string;
-  actor: 'Intake Agent' | 'Dispatcher Agent' | 'Follow-up Agent' | 'Communication Agent' | 'Resident' | 'Facility Manager' | 'Vendor';
+  actor:
+    | 'Intake Agent'
+    | 'Dispatcher Agent'
+    | 'Follow-up Agent'
+    | 'Communication Agent'
+    | 'Resident'
+    | 'Facility Manager'
+    | 'Vendor';
   type: 'created' | 'assigned' | 'status_change' | 'escalated' | 'notified' | 'note' | 'closed';
 }
 

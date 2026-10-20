@@ -1,5 +1,6 @@
-import { PrismaClient, Ticket as PrismaTicket, TimelineEvent as PrismaTimelineEvent, Vendor, ResidentProfile } from '@prisma/client';
+import { PrismaClient, Ticket as PrismaTicket } from '@prisma/client';
 import { slaDueAt } from '../../services/sla';
+import { resolveImageUrls } from '../../services/storage';
 
 export interface TicketData {
   flatNumber: string;
@@ -13,12 +14,15 @@ export interface TicketData {
   vendorId?: string;
 }
 
+/** Timeline events oldest first; Postgres returns them in no fixed order otherwise. */
+const TIMELINE_IN_ORDER = { timeline: { orderBy: { timestamp: 'asc' as const } } };
+
 /** Statuses after which a vendor is no longer working the job. */
 const FINISHED_STATUSES = ['Resolved', 'Closed'];
 
 export interface TimelineEventData {
   id: string;
-  timestamp: string;
+  timestamp: Date;
   title: string;
   description: string;
   actor: string;
@@ -26,9 +30,11 @@ export interface TimelineEventData {
   ticketId: string;
 }
 
-function toTicket(t: PrismaTicket & { timeline: TimelineEventData[] }): any {
+/** Stored image keys become signed URLs here, on the way out to any caller. */
+async function toTicket(t: PrismaTicket & { timeline: TimelineEventData[] }): Promise<any> {
   return {
     ...t,
+    images: await resolveImageUrls(t.images),
     timeline: t.timeline,
   };
 }
@@ -39,16 +45,16 @@ export class TicketRepository {
   async findAll(): Promise<any[]> {
     const tickets = await this.prisma.ticket.findMany({
       where: { deletedAt: null },
-      include: { timeline: true },
+      include: TIMELINE_IN_ORDER,
       orderBy: { createdAt: 'desc' },
     });
-    return tickets.map(toTicket);
+    return Promise.all(tickets.map(toTicket));
   }
 
   async findById(id: string): Promise<any | undefined> {
     const ticket = await this.prisma.ticket.findFirst({
       where: { id, deletedAt: null },
-      include: { timeline: true },
+      include: TIMELINE_IN_ORDER,
     });
     return ticket ? toTicket(ticket) : undefined;
   }
@@ -68,7 +74,6 @@ export class TicketRepository {
 
   async create(data: TicketData): Promise<any> {
     const ticketId = `SOC-${await this.nextTicketNumber()}`;
-    const now = new Date().toISOString();
 
     const ticket = await this.prisma.ticket.create({
       data: {
@@ -89,7 +94,6 @@ export class TicketRepository {
         vendorId: data.vendorId,
         timeline: {
           create: {
-            timestamp: now,
             title: 'Ticket Created',
             description: `Intake Agent registered complaint: "${data.description.substring(0, 80)}..."`,
             actor: 'Intake Agent',
@@ -97,7 +101,7 @@ export class TicketRepository {
           },
         },
       },
-      include: { timeline: true },
+      include: TIMELINE_IN_ORDER,
     });
 
     return toTicket(ticket);
@@ -107,9 +111,8 @@ export class TicketRepository {
     const existing = await this.prisma.ticket.findFirst({ where: { id, deletedAt: null } });
     if (!existing) return undefined;
 
-    const now = new Date().toISOString();
-    const isFinishing =
-      FINISHED_STATUSES.includes(updates.status) && !FINISHED_STATUSES.includes(existing.status);
+    const now = new Date();
+    const isFinishing = FINISHED_STATUSES.includes(updates.status) && !FINISHED_STATUSES.includes(existing.status);
 
     const updated = await this.prisma.ticket.update({
       where: { id },
@@ -118,7 +121,7 @@ export class TicketRepository {
         updatedAt: now,
         ...(isFinishing ? { resolvedAt: now } : {}),
       },
-      include: { timeline: true },
+      include: TIMELINE_IN_ORDER,
     });
 
     // Release the vendor. assignVendor incremented this counter and nothing
@@ -145,7 +148,7 @@ export class TicketRepository {
 
     if (!ticket || !vendor) return undefined;
 
-    const now = new Date().toISOString();
+    const now = new Date();
     const updated = await this.prisma.ticket.update({
       where: { id: ticketId },
       data: {
@@ -166,7 +169,7 @@ export class TicketRepository {
           },
         },
       },
-      include: { timeline: true },
+      include: TIMELINE_IN_ORDER,
     });
 
     await this.prisma.vendor.update({
@@ -181,7 +184,7 @@ export class TicketRepository {
     const ticket = await this.prisma.ticket.findFirst({ where: { id: ticketId, deletedAt: null } });
     if (!ticket) return undefined;
 
-    const now = new Date().toISOString();
+    const now = new Date();
     const updated = await this.prisma.ticket.update({
       where: { id: ticketId },
       data: {
@@ -199,13 +202,19 @@ export class TicketRepository {
           },
         },
       },
-      include: { timeline: true },
+      include: TIMELINE_IN_ORDER,
     });
 
     return toTicket(updated);
   }
 
-  async search(query: string, category?: string, urgency?: string, status?: string, flatNumber?: string): Promise<any[]> {
+  async search(
+    query: string,
+    category?: string,
+    urgency?: string,
+    status?: string,
+    flatNumber?: string,
+  ): Promise<any[]> {
     const where: any = { deletedAt: null };
 
     // Restricts the result to one flat. Callers pass this to stop a resident
@@ -228,10 +237,10 @@ export class TicketRepository {
 
     const tickets = await this.prisma.ticket.findMany({
       where,
-      include: { timeline: true },
+      include: TIMELINE_IN_ORDER,
       orderBy: { createdAt: 'desc' },
     });
-    return tickets.map(toTicket);
+    return Promise.all(tickets.map(toTicket));
   }
 
   async softDelete(id: string): Promise<boolean> {

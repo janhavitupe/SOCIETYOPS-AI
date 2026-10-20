@@ -1,19 +1,20 @@
 // Must precede every other import: ./src/database/prisma builds its connection
 // pool at module-evaluation time and needs DATABASE_URL already in the environment.
 import 'dotenv/config';
+// Before the app is built, so error tracking can hook the HTTP server.
+import './src/instrument';
+import * as Sentry from '@sentry/node';
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import xss from 'xss-clean';
-import hpp from 'hpp';
 import rateLimit from 'express-rate-limit';
 import path from 'path';
-import net from 'net';
-import { createServer as createViteServer } from 'vite';
 import { logger, morganMiddleware } from './src/logger';
+import { requestId } from './src/requestContext';
+import { storageOrigin } from './src/services/storage';
 import authRoutes from './src/auth/authRoutes';
 import { authenticateToken } from './src/auth/authMiddleware';
-import { startFollowupScheduler } from './src/services/followup';
+import { startJobs, stopJobs } from './src/services/jobs';
 import healthRoutes from './src/routes/health';
 import ticketRoutes from './src/routes/tickets';
 import vendorRoutes from './src/routes/vendors';
@@ -21,25 +22,16 @@ import operationsRoutes from './src/routes/operations';
 import societyRoutes from './src/routes/society';
 import followupRoutes from './src/routes/followup';
 import chatRoutes from './src/routes/chat';
+import uploadRoutes from './src/routes/uploads';
 
-async function isPortFree(port: number): Promise<boolean> {
-  return new Promise((resolve) => {
-    const tester = net.createServer()
-      .once('error', () => resolve(false))
-      .once('listening', () => {
-        tester.close(() => resolve(true));
-      })
-      .listen(port, '0.0.0.0');
-  });
-}
-
-async function findAvailablePort(startPort: number, maxAttempts = 50): Promise<number> {
-  let port = startPort;
-  for (let i = 0; i < maxAttempts; i += 1) {
-    if (await isPortFree(port)) return port;
-    port += 1;
+/** The origin a Sentry DSN reports to, for the CSP. */
+function sentryOrigin(dsn?: string): string | null {
+  if (!dsn) return null;
+  try {
+    return new URL(dsn).origin;
+  } catch {
+    return null;
   }
-  throw new Error(`No available port found starting at ${startPort}`);
 }
 
 /**
@@ -51,27 +43,43 @@ async function findAvailablePort(startPort: number, maxAttempts = 50): Promise<n
  * has to sit.
  */
 export async function createApp(
-  opts: { attachFrontend?: (app: express.Application) => void | Promise<void> } = {}
+  opts: { attachFrontend?: (app: express.Application) => void | Promise<void> } = {},
 ): Promise<express.Application> {
   const app = express();
+
+  // First, so everything after it (including CORS refusals) logs with the id.
+  app.use(requestId);
 
   const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000,http://localhost:5173')
     .split(',')
     .map((o) => o.trim());
 
-  app.use(cors({
-    origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error('Not allowed by CORS'));
-      }
-    },
-    credentials: true,
-  }));
+  app.use(
+    cors({
+      origin: (origin, callback) => {
+        if (!origin || allowedOrigins.includes(origin)) {
+          callback(null, true);
+        } else {
+          callback(new Error('Not allowed by CORS'));
+        }
+      },
+      credentials: true,
+    }),
+  );
 
   if (process.env.NODE_ENV === 'production') {
-    app.use(helmet());
+    // Photos load from, and upload to, object storage; browser errors go to Sentry.
+    const extra = [storageOrigin(), sentryOrigin(process.env.VITE_SENTRY_DSN)].filter((o): o is string => !!o);
+    app.use(
+      helmet({
+        contentSecurityPolicy: {
+          directives: {
+            imgSrc: ["'self'", 'data:', 'blob:', ...extra],
+            connectSrc: ["'self'", ...extra],
+          },
+        },
+      }),
+    );
   } else {
     app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
   }
@@ -99,9 +107,8 @@ export async function createApp(
   // Scoped to /api: mounted globally it also throttles the SPA's static assets
   // and HMR traffic, which exhausts the quota during a single page load.
   app.use('/api', generalLimiter);
-  app.use(express.json({ limit: '10mb' }));
-  app.use(xss());
-  app.use(hpp({ whitelist: ['query', 'category', 'urgency', 'status'] }));
+  // Photos go to object storage, not the JSON body, so a small limit suffices.
+  app.use(express.json({ limit: '100kb' }));
   app.use(morganMiddleware);
 
   // Populates req.user for every API route. The per-route guards below decide
@@ -125,15 +132,26 @@ export async function createApp(
   app.use('/api', societyRoutes);
   app.use('/api', followupRoutes);
   app.use('/api', chatRoutes);
-
+  app.use('/api', uploadRoutes);
 
   if (opts.attachFrontend) {
     await opts.attachFrontend(app);
   }
 
-  // Terminal error handler. Async routes reach it via `route()`; registered last
-  // so it sits behind both the API routes and the Vite/static middleware.
-  app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
+  // Reports errors to Sentry when SENTRY_DSN is set, then passes them on.
+  Sentry.setupExpressErrorHandler(app);
+
+  // Terminal error handler. Express 5 forwards rejected async handlers here;
+  // registered last so it sits behind both the API routes and the frontend.
+  app.use((err: Error & { type?: string }, req: Request, res: Response, _next: NextFunction) => {
+    // body-parser failures are the client's fault, not a server error.
+    if (err.type === 'entity.parse.failed') {
+      return res.status(400).json({ error: 'Request body is not valid JSON' });
+    }
+    if (err.type === 'entity.too.large') {
+      return res.status(413).json({ error: 'Request body is too large' });
+    }
+
     logger.error('Unhandled request error', {
       method: req.method,
       url: req.originalUrl,
@@ -147,43 +165,45 @@ export async function createApp(
       return res.status(403).json({ error: 'Origin not allowed' });
     }
 
-    res.status(500).json({ error: 'Internal server error' });
+    // The id lets a user's report be matched to the log lines and Sentry event.
+    res.status(500).json({ error: 'Internal server error', requestId: res.getHeader('X-Request-Id') });
   });
 
   return app;
 }
 
-async function startServer() {
-  const PORT = await findAvailablePort(Number(process.env.PORT) || 3000);
+/**
+ * Serves the built SPA in production and the Vite dev server otherwise.
+ *
+ * The production bundle defaults NODE_ENV to production (scripts/build-server.mjs);
+ * `npm start` used to boot the dev server because nothing set it.
+ */
+async function attachFrontend(app: express.Application) {
+  if (process.env.NODE_ENV === 'production') {
+    const distPath = path.join(process.cwd(), 'dist');
+    app.use(express.static(distPath, { index: false }));
+    app.get('/{*splat}', (req, res, next) => {
+      if (req.path.startsWith('/api/')) return next();
+      res.sendFile(path.join(distPath, 'index.html'));
+    });
+    return;
+  }
 
-  const app = await createApp({
-    attachFrontend: async (app) => {
-    // --- VITE MIDDLEWARE SETUP ---
-    const HMR_PORT = Number(process.env.HMR_PORT) || 24678;
-    if (process.env.NODE_ENV !== 'production') {
-      try {
-        const vite = await createViteServer({
-          server: { middlewareMode: true, hmr: { port: HMR_PORT } },
-          appType: 'spa',
-        });
-        app.use(vite.middlewares);
-      } catch (viteErr) {
-        logger.warn('Vite dev server HMR failed, falling back to disabled HMR', { error: (viteErr as Error).message });
-        const vite = await createViteServer({
-          server: { middlewareMode: true, hmr: false },
-          appType: 'spa',
-        });
-        app.use(vite.middlewares);
-      }
-    } else {
-      const distPath = path.join(process.cwd(), 'dist');
-      app.use(express.static(distPath));
-      app.get('*', (req, res) => {
-        res.sendFile(path.join(distPath, 'index.html'));
-      });
-    }
-    },
+  // Imported here so the production image never loads Vite.
+  const { createServer: createViteServer } = await import('vite');
+  const vite = await createViteServer({
+    server: { middlewareMode: true, hmr: { port: Number(process.env.HMR_PORT) || 24678 } },
+    appType: 'spa',
   });
+  app.use(vite.middlewares);
+}
+
+async function startServer() {
+  // A fixed port: silently moving to the next free one broke container port
+  // mapping and left two copies of the app running unnoticed.
+  const PORT = Number(process.env.PORT) || 3000;
+
+  const app = await createApp({ attachFrontend });
 
   process.on('unhandledRejection', (reason) => {
     logger.error('Unhandled promise rejection', {
@@ -196,24 +216,32 @@ async function startServer() {
     logger.error('Uncaught exception', { error: err.message, stack: err.stack });
   });
 
-  const server = app.listen(PORT, '0.0.0.0', () => {
-    logger.info(`SocietyOps AI server running at http://0.0.0.0:${PORT}`, { port: PORT, env: process.env.NODE_ENV || 'development' });
+  // Express 5 calls this on failure too, with the error.
+  const server = app.listen(PORT, '0.0.0.0', (err?: NodeJS.ErrnoException) => {
+    if (err) {
+      if (err.code === 'EADDRINUSE') {
+        logger.error(`Port ${PORT} is already in use. Stop the other process or set PORT.`, { port: PORT });
+      } else {
+        logger.error('HTTP server failed', { error: err.message, stack: err.stack });
+      }
+      process.exit(1);
+    }
+    logger.info(`SocietyOps AI server running at http://0.0.0.0:${PORT}`, {
+      port: PORT,
+      env: process.env.NODE_ENV || 'development',
+    });
   });
 
-  // Runs the follow-up agent unattended when FOLLOWUP_INTERVAL_MINUTES is set.
-  // Without it the "autonomous" cycle only ran when someone pressed a button.
-  const stopFollowupScheduler = startFollowupScheduler((err) =>
-    logger.error('Scheduled follow-up cycle failed', { error: err.message, stack: err.stack })
+  // The follow-up agent and other scheduled work run from the job queue.
+  // A queue failure is logged but does not take the API down with it.
+  await startJobs().catch((err: Error) =>
+    logger.error('Job queue failed to start; scheduled work is not running', { error: err.message, stack: err.stack }),
   );
-
-  if (stopFollowupScheduler) {
-    logger.info('Follow-up scheduler enabled', { everyMinutes: Number(process.env.FOLLOWUP_INTERVAL_MINUTES) });
-  }
 
   const gracefulShutdown = () => {
     logger.info('Received shutdown signal, closing server gracefully...');
-    stopFollowupScheduler?.();
-    server.close(() => {
+    server.close(async () => {
+      await stopJobs().catch((err: Error) => logger.error('Job queue did not stop cleanly', { error: err.message }));
       logger.info('Server closed successfully');
       process.exit(0);
     });

@@ -50,9 +50,7 @@ export class ConsoleNotificationProvider implements NotificationProvider {
   readonly name = 'console';
 
   async send(message: OutboundMessage): Promise<DispatchResult> {
-    console.info(
-      `[notification:simulated] ${message.channel} -> ${message.to}: ${message.body.slice(0, 120)}`
-    );
+    console.info(`[notification:simulated] ${message.channel} -> ${message.to}: ${message.body.slice(0, 120)}`);
     return { status: 'Simulated', provider: this.name };
   }
 }
@@ -64,7 +62,7 @@ export class TwilioNotificationProvider implements NotificationProvider {
   constructor(
     private accountSid: string,
     private authToken: string,
-    private fromNumber: string
+    private fromNumber: string,
   ) {}
 
   async send(message: OutboundMessage): Promise<DispatchResult> {
@@ -84,17 +82,14 @@ export class TwilioNotificationProvider implements NotificationProvider {
     });
 
     try {
-      const response = await fetch(
-        `https://api.twilio.com/2010-04-01/Accounts/${this.accountSid}/Messages.json`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Basic ${Buffer.from(`${this.accountSid}:${this.authToken}`).toString('base64')}`,
-            'Content-Type': 'application/x-www-form-urlencoded',
-          },
-          body: form,
-        }
-      );
+      const response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${this.accountSid}/Messages.json`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Basic ${Buffer.from(`${this.accountSid}:${this.authToken}`).toString('base64')}`,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: form,
+      });
 
       const payload: any = await response.json().catch(() => ({}));
 
@@ -121,9 +116,8 @@ export function getNotificationProvider(): NotificationProvider {
     const token = process.env.TWILIO_AUTH_TOKEN;
     const from = process.env.TWILIO_FROM_NUMBER;
 
-    provider = sid && token && from
-      ? new TwilioNotificationProvider(sid, token, from)
-      : new ConsoleNotificationProvider();
+    provider =
+      sid && token && from ? new TwilioNotificationProvider(sid, token, from) : new ConsoleNotificationProvider();
   }
   return provider;
 }

@@ -1,122 +1,52 @@
 import { Router } from 'express';
+import { Prisma } from '@prisma/client';
 import { residentProfileRepo, authRepo } from '../database/repositories';
 import { generateToken, hashPassword } from './authUtils';
 import { authenticateToken } from './authMiddleware';
+import { logger } from '../logger';
+import { validateBody } from '../routes/validate';
+import { registerBody, loginBody } from '../routes/schemas';
 
 const router = Router();
 
-function normalizePhone(phone?: string) {
-  if (!phone) return '';
-  return phone.toString().replace(/[^0-9]/g, '');
+/** The fields of a resident that go into the token and the login response. */
+function sessionFor(resident: { id: string; name: string; flatNumber: string; role: string }) {
+  const profile = { id: resident.id, name: resident.name, flatNumber: resident.flatNumber, role: resident.role };
+  return { resident: profile, token: generateToken(profile) };
 }
 
-router.post('/register', async (req, res) => {
+// The schema has already reduced phone to its canonical form, which is how
+// it is stored, so the (flatNumber, phone) unique constraint is the duplicate
+// check. This used to load every resident and compare numbers in memory.
+router.post('/register', validateBody(registerBody), async (req, res) => {
+  const { name, flatNumber, phone, password } = req.body;
+
   try {
-    const { name, flatNumber, phone, password } = req.body;
-
-    if (!name || !flatNumber || !phone || !password) {
-      return res.status(400).json({
-        error: 'Name, flat number, phone, and password are required'
-      });
-    }
-
-    const allResidents = await residentProfileRepo.findAll();
-    const existingResident = allResidents.find(
-      r => r.flatNumber === flatNumber && normalizePhone(r.phone) === normalizePhone(phone)
+    const created = await authRepo.createResidentWithAuth(
+      { name, flatNumber, role: 'resident', phone, email: '' },
+      await hashPassword(password),
     );
 
-    if (existingResident) {
-      return res.status(409).json({
-        error: 'Resident with this flat number and phone already exists'
-      });
+    res.status(201).json({ message: 'Resident registered successfully', ...sessionFor(created) });
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      return res.status(409).json({ error: 'Resident with this flat number and phone already exists' });
     }
-
-    const hashedPassword = await authRepo.createResidentWithAuth({
-      name,
-      flatNumber,
-      role: 'resident',
-      phone,
-      email: '',
-    }, await import('./authUtils').then(m => m.hashPassword(password)));
-
-    const token = generateToken({
-      id: hashedPassword.id,
-      name: hashedPassword.name,
-      flatNumber: hashedPassword.flatNumber,
-      role: hashedPassword.role,
-    });
-
-    res.status(201).json({
-      message: 'Resident registered successfully',
-      resident: {
-        id: hashedPassword.id,
-        name: hashedPassword.name,
-        flatNumber: hashedPassword.flatNumber,
-        role: hashedPassword.role,
-      },
-      token,
-    });
-  } catch (error) {
-    console.error('Registration error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    throw err;
   }
 });
 
-router.post('/login', async (req, res) => {
-  try {
-    const { flatNumber, phone, password } = req.body;
+router.post('/login', validateBody(loginBody), async (req, res) => {
+  const { flatNumber, phone, password } = req.body;
 
-    if (!flatNumber || !phone || !password) {
-      return res.status(400).json({
-        error: 'Flat number, phone, and password are required'
-      });
-    }
-
-    const incomingDigits = normalizePhone(phone);
-    const incomingLast10 = incomingDigits.slice(-10);
-
-    const allResidents = await residentProfileRepo.findAll();
-    const resident = allResidents.find((r) => {
-      const flatMatches = r.flatNumber?.toString().trim().toLowerCase() === flatNumber.toString().trim().toLowerCase();
-      if (!flatMatches) return false;
-      const storedDigits = normalizePhone(r.phone);
-      const storedLast10 = storedDigits.slice(-10);
-      return storedDigits === incomingDigits || storedLast10 === incomingLast10;
-    });
-
-    if (!resident) {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
-
-    const isValid = await authRepo.verifyResidentPassword(resident.id, password);
-
-    if (!isValid) {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
-
-    const token = generateToken({
-      id: resident.id,
-      name: resident.name,
-      flatNumber: resident.flatNumber,
-      role: resident.role,
-    });
-
-    await residentProfileRepo.updateLastActive(resident.id);
-
-    res.json({
-      message: 'Login successful',
-      resident: {
-        id: resident.id,
-        name: resident.name,
-        flatNumber: resident.flatNumber,
-        role: resident.role,
-      },
-      token,
-    });
-  } catch (error) {
-    console.error('Login error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+  const resident = await residentProfileRepo.findByFlatAndPhone(flatNumber, phone);
+  if (!resident || !(await authRepo.verifyResidentPassword(resident.id, password))) {
+    logger.warn('Login failed', { flatNumber });
+    return res.status(401).json({ error: 'Invalid credentials' });
   }
+
+  await residentProfileRepo.updateLastActive(resident.id);
+  res.json({ message: 'Login successful', ...sessionFor(resident) });
 });
 
 router.get('/me', authenticateToken, async (req, res) => {
@@ -129,10 +59,8 @@ router.get('/me', authenticateToken, async (req, res) => {
     return res.status(404).json({ error: 'Resident not found' });
   }
 
-  const { accessToken, ...safeResident } = resident as any;
-  res.json({
-    user: safeResident,
-  });
+  const { accessToken, ...safeResident } = resident;
+  res.json({ user: safeResident });
 });
 
 export default router;

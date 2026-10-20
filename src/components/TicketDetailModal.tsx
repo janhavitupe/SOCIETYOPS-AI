@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Ticket, Vendor } from '../types';
-import { X, Clock, ShieldAlert, Wrench, CheckCircle2, Phone, AlertTriangle, User, Calendar, MessageSquare, Send } from 'lucide-react';
+import { X, Clock, Wrench, User } from 'lucide-react';
 
 interface TicketDetailModalProps {
   ticket: Ticket | null;
@@ -21,11 +21,13 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({
   onEscalateTicket,
   onCloseTicket,
 }) => {
-  if (!ticket) return null;
-
-  const [selectedVendorId, setSelectedVendorId] = useState(ticket.assignedVendorId || '');
+  // Hooks come before the early return: calling them after it changed the
+  // hook count between renders, which React rejects as soon as a ticket opens.
+  const [selectedVendorId, setSelectedVendorId] = useState(ticket?.assignedVendorId || '');
   const [escalationReason, setEscalationReason] = useState('');
   const [showEscalateForm, setShowEscalateForm] = useState(false);
+
+  if (!ticket) return null;
 
   const handleAssign = () => {
     if (selectedVendorId) {
@@ -51,14 +53,10 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({
         <div className="p-5 border-b border-[#E5E5E1] dark:border-[#2D2D2A] bg-[#FBFBFA] dark:bg-[#1C1C1B] flex items-center justify-between">
           <div>
             <div className="flex items-center space-x-2">
-              <span className="font-mono font-bold text-base tracking-tight text-[#6366F1]">
-                Ticket #{ticket.id}
-              </span>
+              <span className="font-mono font-bold text-base tracking-tight text-[#6366F1]">Ticket #{ticket.id}</span>
               <span
                 className={`px-2.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-                  ticket.urgency === 'High'
-                    ? 'bg-rose-100 text-[#EF4444]'
-                    : 'bg-amber-100 text-amber-800'
+                  ticket.urgency === 'High' ? 'bg-rose-100 text-[#EF4444]' : 'bg-amber-100 text-amber-800'
                 }`}
               >
                 {ticket.urgency} Urgency
@@ -82,12 +80,12 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({
 
         {/* Modal Body */}
         <div className="p-6 overflow-y-auto space-y-6 flex-1 text-xs">
-          
           {/* Main Info Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            
             {/* Resident Details */}
-            <div className={`p-4 rounded border ${isDarkMode ? 'bg-[#121211] border-[#2D2D2A]' : 'bg-[#FAFAF9] border-[#E5E5E1]'}`}>
+            <div
+              className={`p-4 rounded border ${isDarkMode ? 'bg-[#121211] border-[#2D2D2A]' : 'bg-[#FAFAF9] border-[#E5E5E1]'}`}
+            >
               <h3 className="font-bold text-xs uppercase tracking-wider text-[#1A1A1A] dark:text-slate-200 mb-2 flex items-center space-x-1">
                 <User className="w-3.5 h-3.5 text-[#6366F1] mr-1" /> Resident Details
               </h3>
@@ -108,7 +106,9 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({
             </div>
 
             {/* Vendor Details */}
-            <div className={`p-4 rounded border ${isDarkMode ? 'bg-[#121211] border-[#2D2D2A]' : 'bg-[#FAFAF9] border-[#E5E5E1]'}`}>
+            <div
+              className={`p-4 rounded border ${isDarkMode ? 'bg-[#121211] border-[#2D2D2A]' : 'bg-[#FAFAF9] border-[#E5E5E1]'}`}
+            >
               <h3 className="font-bold text-xs uppercase tracking-wider text-[#1A1A1A] dark:text-slate-200 mb-2 flex items-center space-x-1">
                 <Wrench className="w-3.5 h-3.5 text-[#6366F1] mr-1" /> Vendor Dispatch
               </h3>
@@ -128,16 +128,19 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({
                   </div>
                 </div>
               ) : (
-                <p className="text-amber-600 font-semibold italic">No vendor assigned yet. Use control below to dispatch.</p>
+                <p className="text-amber-600 font-semibold italic">
+                  No vendor assigned yet. Use control below to dispatch.
+                </p>
               )}
             </div>
-
           </div>
 
           {/* Complaint Description */}
           <div>
             <h3 className="font-bold text-xs uppercase tracking-wider text-[#888888] mb-1.5">Complaint Description</h3>
-            <div className={`p-3.5 rounded border font-sans leading-relaxed text-xs ${isDarkMode ? 'bg-[#121211] border-[#2D2D2A]' : 'bg-[#FAFAF9] border-[#E5E5E1]'}`}>
+            <div
+              className={`p-3.5 rounded border font-sans leading-relaxed text-xs ${isDarkMode ? 'bg-[#121211] border-[#2D2D2A]' : 'bg-[#FAFAF9] border-[#E5E5E1]'}`}
+            >
               {ticket.description}
             </div>
           </div>
@@ -148,7 +151,12 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({
               <h3 className="font-bold text-xs uppercase tracking-wider text-[#888888] mb-1.5">Attached Photos</h3>
               <div className="flex gap-2">
                 {ticket.images.map((img, idx) => (
-                  <img key={idx} src={img} alt="Attached" className="w-32 h-32 object-cover rounded border border-[#E5E5E1]" />
+                  <img
+                    key={idx}
+                    src={img}
+                    alt="Attached"
+                    className="w-32 h-32 object-cover rounded border border-[#E5E5E1]"
+                  />
                 ))}
               </div>
             </div>
@@ -164,7 +172,9 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({
                 <div key={event.id} className="relative pb-2">
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-[#1A1A1A] dark:text-slate-100">{event.title}</span>
-                    <span className="text-[10px] text-[#888888]">{new Date(event.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                    <span className="text-[10px] text-[#888888]">
+                      {new Date(event.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
                   </div>
                   <p className="text-[#71716A] dark:text-slate-400 mt-0.5">{event.description}</p>
                   <span className="inline-block mt-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-[#F0F0EE] dark:bg-[#222220] text-[#6366F1]">
@@ -176,8 +186,12 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({
           </div>
 
           {/* Assign Vendor / Reassign Controls */}
-          <div className={`p-4 rounded border space-y-3 ${isDarkMode ? 'bg-[#121211] border-[#2D2D2A]' : 'bg-[#FAFAF9] border-[#E5E5E1]'}`}>
-            <h3 className="font-bold text-xs uppercase tracking-wider text-[#1A1A1A] dark:text-white">Manager Dispatch Control</h3>
+          <div
+            className={`p-4 rounded border space-y-3 ${isDarkMode ? 'bg-[#121211] border-[#2D2D2A]' : 'bg-[#FAFAF9] border-[#E5E5E1]'}`}
+          >
+            <h3 className="font-bold text-xs uppercase tracking-wider text-[#1A1A1A] dark:text-white">
+              Manager Dispatch Control
+            </h3>
             <div className="flex items-center space-x-2">
               <select
                 value={selectedVendorId}
@@ -187,7 +201,7 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({
                 }`}
               >
                 <option value="">Select Vendor to Dispatch...</option>
-                {vendors.map(v => (
+                {vendors.map((v) => (
                   <option key={v.id} value={v.id}>
                     {v.name} ({v.category}) — {v.rating} stars [{v.availability}]
                   </option>
@@ -207,7 +221,9 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({
           {/* Escalation Form */}
           {showEscalateForm ? (
             <div className="p-4 rounded border border border-rose-300 bg-rose-50 dark:bg-rose-950/50 space-y-2">
-              <h4 className="font-bold text-xs uppercase tracking-wider text-rose-800 dark:text-rose-200">Escalate Ticket to RWA Committee</h4>
+              <h4 className="font-bold text-xs uppercase tracking-wider text-rose-800 dark:text-rose-200">
+                Escalate Ticket to RWA Committee
+              </h4>
               <input
                 type="text"
                 value={escalationReason}
@@ -216,12 +232,20 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({
                 className="w-full p-2 border rounded text-xs bg-white dark:bg-[#121211] text-[#1A1A1A] dark:text-white"
               />
               <div className="flex justify-end space-x-2">
-                <button onClick={() => setShowEscalateForm(false)} className="px-3 py-1 bg-slate-200 rounded text-xs">Cancel</button>
-                <button onClick={handleEscalate} className="px-3 py-1 bg-[#EF4444] text-white font-bold text-xs uppercase tracking-wider rounded">Confirm Escalation</button>
+                <button onClick={() => setShowEscalateForm(false)} className="px-3 py-1 bg-slate-200 rounded text-xs">
+                  Cancel
+                </button>
+                <button
+                  onClick={handleEscalate}
+                  className="px-3 py-1 bg-[#EF4444] text-white font-bold text-xs uppercase tracking-wider rounded"
+                >
+                  Confirm Escalation
+                </button>
               </div>
             </div>
           ) : (
-            ticket.status !== 'Escalated' && ticket.status !== 'Closed' && (
+            ticket.status !== 'Escalated' &&
+            ticket.status !== 'Closed' && (
               <div className="flex justify-between items-center">
                 <button
                   onClick={() => setShowEscalateForm(true)}
@@ -242,7 +266,6 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({
               </div>
             )
           )}
-
         </div>
       </div>
     </div>

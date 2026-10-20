@@ -1,0 +1,6 @@
+# Prettier enforces LF; keep working copies LF on Windows too, or
+# format:check fails after every checkout with core.autocrlf=true.
+* text=auto eol=lf
+*.ps1 text eol=crlf
+*.png binary
+*.jpg binary

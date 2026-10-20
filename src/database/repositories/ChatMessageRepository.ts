@@ -16,9 +16,7 @@ export class ChatMessageRepository {
       take: limit,
     });
 
-    return rows
-      .reverse()
-      .map((r) => ({ role: r.role === 'model' ? 'model' : 'user', text: r.text }));
+    return rows.reverse().map((r) => ({ role: r.role === 'model' ? 'model' : 'user', text: r.text }));
   }
 
   async append(residentId: string, role: ChatRole, text: string): Promise<void> {

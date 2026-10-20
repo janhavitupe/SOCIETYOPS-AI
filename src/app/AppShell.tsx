@@ -1,0 +1,119 @@
+import { createContext, useContext, useState } from 'react';
+import { Outlet, useLocation, useNavigate, useSearch } from '@tanstack/react-router';
+import { NavigationHeader } from '@/components/NavigationHeader';
+import { TicketDetailModal } from '@/components/TicketDetailModal';
+import { AnalyticsReportModal } from '@/components/AnalyticsReportModal';
+import { NotificationsDrawer } from '@/components/NotificationsDrawer';
+import { useAuth } from '@/context/AuthContext';
+import type { Ticket } from '@/types';
+import { useNotifications, useSocietyProfile, useTicket, useTicketActions, useVendors } from './queries';
+import { isManagerRole } from './roles';
+
+interface ShellContextValue {
+  isDarkMode: boolean;
+  /** Opens a ticket's detail over the current page (as ?ticket=<id>). */
+  openTicket: (ticket: Pick<Ticket, 'id'>) => void;
+}
+
+const ShellContext = createContext<ShellContextValue | null>(null);
+
+export function useShell(): ShellContextValue {
+  const value = useContext(ShellContext);
+  if (!value) throw new Error('useShell must be used inside AppShell');
+  return value;
+}
+
+type Tab = 'resident' | 'manager' | 'vendors';
+
+const TAB_PATHS: Record<Tab, string> = {
+  resident: '/resident',
+  manager: '/manager',
+  vendors: '/manager/vendors',
+};
+
+function tabFor(pathname: string): Tab {
+  if (pathname.startsWith('/manager/vendors')) return 'vendors';
+  if (pathname.startsWith('/manager')) return 'manager';
+  return 'resident';
+}
+
+/** The frame around every signed-in page: header, drawers and the ticket modal. */
+export function AppShell() {
+  const { user } = useAuth();
+  const isManager = isManagerRole(user?.role);
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const { ticket: openTicketId } = useSearch({ from: '/app' });
+
+  const [isDarkMode, setIsDarkMode] = useState(false);
+  const [isNotifsOpen, setIsNotifsOpen] = useState(false);
+  const [isReportOpen, setIsReportOpen] = useState(false);
+
+  const societyProfile = useSocietyProfile();
+  const notifications = useNotifications(isManager);
+  const vendors = useVendors();
+  const openTicket = useTicket(openTicketId);
+  const actions = useTicketActions();
+
+  const setOpenTicketId = (id: string | undefined) =>
+    navigate({ to: '.', search: (prev: Record<string, unknown>) => ({ ...prev, ticket: id }) });
+
+  const shell: ShellContextValue = {
+    isDarkMode,
+    openTicket: (ticket) => setOpenTicketId(ticket.id),
+  };
+
+  return (
+    <ShellContext.Provider value={shell}>
+      <div
+        className={`min-h-screen font-sans transition-colors ${isDarkMode ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900'}`}
+      >
+        <NavigationHeader
+          activeTab={tabFor(pathname)}
+          setActiveTab={(tab) => navigate({ to: TAB_PATHS[tab] })}
+          societyName={societyProfile.data?.societyName || 'Your society'}
+          isDarkMode={isDarkMode}
+          setIsDarkMode={setIsDarkMode}
+          unreadNotifsCount={notifications.data?.length ?? 0}
+          onOpenNotifs={() => setIsNotifsOpen(true)}
+          onOpenReport={() => setIsReportOpen(true)}
+          onRunFollowupCycle={() => actions.runFollowup.mutate()}
+          isFollowupRunning={actions.runFollowup.isPending}
+          user={user}
+        />
+
+        <main className="pb-12">
+          <Outlet />
+        </main>
+
+        {/* Keyed so the modal's form state resets when a different ticket opens. */}
+        <TicketDetailModal
+          key={openTicket.data?.id ?? 'none'}
+          ticket={openTicket.data ?? null}
+          vendors={vendors.data ?? []}
+          onClose={() => setOpenTicketId(undefined)}
+          isDarkMode={isDarkMode}
+          onAssignVendor={(ticketId, vendorId) => actions.assign.mutate({ ticketId, vendorId })}
+          onEscalateTicket={(ticketId, reason) => actions.escalate.mutate({ ticketId, reason })}
+          onCloseTicket={(ticketId) => actions.close.mutate({ ticketId })}
+        />
+
+        {isManager && (
+          <>
+            <AnalyticsReportModal
+              isOpen={isReportOpen}
+              onClose={() => setIsReportOpen(false)}
+              isDarkMode={isDarkMode}
+            />
+            <NotificationsDrawer
+              isOpen={isNotifsOpen}
+              onClose={() => setIsNotifsOpen(false)}
+              notifications={notifications.data ?? []}
+              isDarkMode={isDarkMode}
+            />
+          </>
+        )}
+      </div>
+    </ShellContext.Provider>
+  );
+}

@@ -75,18 +75,22 @@ function buildRecommendations(
   tickets: TicketLike[],
   frequentCategory: string,
   overdue: number,
-  unassigned: number
+  unassigned: number,
 ): string[] {
   const out: string[] = [];
 
   if (overdue > 0) {
-    out.push(`${overdue} ticket${overdue === 1 ? '' : 's'} past the response deadline — reassign or escalate before adding new work.`);
+    out.push(
+      `${overdue} ticket${overdue === 1 ? '' : 's'} past the response deadline — reassign or escalate before adding new work.`,
+    );
   }
   if (unassigned > 0) {
     out.push(`${unassigned} open ticket${unassigned === 1 ? ' has' : 's have'} no vendor assigned yet.`);
   }
   if (tickets.length > 0) {
-    out.push(`${frequentCategory} is the most reported category this period; keep common spares stocked and a backup vendor on call.`);
+    out.push(
+      `${frequentCategory} is the most reported category this period; keep common spares stocked and a backup vendor on call.`,
+    );
   }
 
   const escalated = tickets.filter((t) => t.status === 'Escalated').length;
@@ -113,34 +117,33 @@ export function buildDailyReport(tickets: TicketLike[], now: Date = new Date()):
   // used to count every finished ticket ever and report it as "today".
   const midnight = startOfToday(now).getTime();
   const resolvedToday = tickets.filter(
-    (t) => FINISHED_STATUSES.includes(t.status) && t.resolvedAt && new Date(t.resolvedAt).getTime() >= midnight
+    (t) => FINISHED_STATUSES.includes(t.status) && t.resolvedAt && new Date(t.resolvedAt).getTime() >= midnight,
   ).length;
 
   // Measured against each ticket's own deadline rather than guessed from
   // urgency and status with no clock.
   const slaAtRiskCount = tickets.filter((t) => isAtRisk(t as any, now)).length;
   const overdue = tickets.filter(
-    (t) => !FINISHED_STATUSES.includes(t.status) && t.slaDueAt && new Date(t.slaDueAt).getTime() < now.getTime()
+    (t) => !FINISHED_STATUSES.includes(t.status) && t.slaDueAt && new Date(t.slaDueAt).getTime() < now.getTime(),
   ).length;
   const unassigned = tickets.filter((t) => t.status === 'Open' && !t.assignedVendorName).length;
 
-  const responseTimes = tickets
-    .map(responseMinutes)
-    .filter((m): m is number => m !== null);
+  const responseTimes = tickets.map(responseMinutes).filter((m): m is number => m !== null);
 
   const avgResponseTimeMinutes = responseTimes.length
     ? Math.round(responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length)
     : 0;
 
-  const frequentCategory = mostFrequent(tickets.map((t) => t.issueCategory), 'None');
+  const frequentCategory = mostFrequent(
+    tickets.map((t) => t.issueCategory),
+    'None',
+  );
 
   // The vendor who has actually closed the most tickets in this set, rather
   // than a fixed name.
   const topPerformingVendor = mostFrequent(
-    tickets
-      .filter((t) => FINISHED_STATUSES.includes(t.status))
-      .map((t) => t.assignedVendorName || ''),
-    'No completed jobs yet'
+    tickets.filter((t) => FINISHED_STATUSES.includes(t.status)).map((t) => t.assignedVendorName || ''),
+    'No completed jobs yet',
   );
 
   return {

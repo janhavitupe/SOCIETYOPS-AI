@@ -122,7 +122,7 @@ describe('writing to other flats', () => {
     const result: any = await executeToolCall(
       'escalate_ticket',
       { ticketId: foreignTicketId, reason: 'injected' },
-      resident
+      resident,
     );
     expect(result.success).toBe(false);
 
@@ -134,21 +134,34 @@ describe('writing to other flats', () => {
     const result: any = await executeToolCall(
       'notify_resident',
       { ticketId: foreignTicketId, message: 'leaked' },
-      resident
+      resident,
     );
     expect(result.success).toBe(false);
   });
 
-  it('lets a resident close their own ticket', async () => {
+  it('lets a resident close their own ticket once the work is done', async () => {
     const own: any = await makeTicket(resident, {
       issueCategory: 'Plumbing',
       description: 'Mine to close',
       urgency: 'Low',
     });
+    await ticketRepo.update(own.ticket.id, { status: 'Resolved' });
 
     const result: any = await executeToolCall('close_ticket', { ticketId: own.ticket.id }, resident);
     expect(result.success).toBe(true);
     expect(result.ticket.status).toBe('Closed');
+  });
+
+  it('refuses a resident closing their own ticket before any work', async () => {
+    const own: any = await makeTicket(resident, {
+      issueCategory: 'Plumbing',
+      description: 'Not started yet',
+      urgency: 'Low',
+    });
+
+    const result: any = await executeToolCall('close_ticket', { ticketId: own.ticket.id }, resident);
+    expect(result.success).toBe(false);
+    expect((await ticketRepo.findById(own.ticket.id)).status).not.toBe('Closed');
   });
 });
 
@@ -159,10 +172,10 @@ describe('manager-only tools', () => {
       const result: any = await executeToolCall(
         tool,
         { ticketId: foreignTicketId, vendorId: 'VND-01', status: 'Closed', message: 'x' },
-        resident
+        resident,
       );
       expect(result.success).toBe(false);
-    }
+    },
   );
 
   it('allows generate_daily_report for a manager', async () => {

@@ -7,7 +7,7 @@ export default defineConfig({
     environment: 'node',
     // Set here rather than in the npm script: `NODE_ENV=test vitest` is not
     // valid syntax in PowerShell, which is where this is run.
-    env: { NODE_ENV: 'test' },
+    env: { NODE_ENV: 'test', UPLOAD_DIR: '.test-uploads', STORAGE_DRIVER: 'local' },
     include: ['tests/**/*.test.ts'],
     setupFiles: ['./tests/setup.ts'],
     // The API tests share one PostgreSQL database, so files must not race.

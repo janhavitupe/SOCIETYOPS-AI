@@ -1,5 +1,5 @@
 import React from 'react';
-import { Building2, MessageSquare, LayoutDashboard, ShieldCheck, Zap, Bell, Sun, Moon, Users } from 'lucide-react';
+import { MessageSquare, LayoutDashboard, ShieldCheck, Zap, Bell, Sun, Moon, Users } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 interface NavigationHeaderProps {
@@ -32,10 +32,11 @@ export const NavigationHeader: React.FC<NavigationHeaderProps> = ({
   const { logout } = useAuth();
   const role = user?.role || 'guest';
   return (
-    <header className={`border-b sticky top-0 z-30 transition-colors ${isDarkMode ? 'bg-[#181817] border-[#2D2D2A] text-slate-100' : 'bg-white border-[#E5E5E1] text-[#1A1A1A]'}`}>
+    <header
+      className={`border-b sticky top-0 z-30 transition-colors ${isDarkMode ? 'bg-[#181817] border-[#2D2D2A] text-slate-100' : 'bg-white border-[#E5E5E1] text-[#1A1A1A]'}`}
+    >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
-          
           {/* Logo & Society Name */}
           <div className="flex items-center space-x-3">
             <div className="flex items-center space-x-2">
@@ -46,9 +47,7 @@ export const NavigationHeader: React.FC<NavigationHeaderProps> = ({
             </div>
             <div className="hidden sm:block h-4 w-px bg-[#E5E5E1] dark:bg-[#2D2D2A]" />
             <div className="hidden sm:flex items-center space-x-1.5">
-              <span className="text-xs text-[#71716A] dark:text-slate-400 font-medium">
-                {societyName}
-              </span>
+              <span className="text-xs text-[#71716A] dark:text-slate-400 font-medium">{societyName}</span>
               <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-indigo-50 text-[#6366F1] dark:bg-indigo-950/80 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
                 <ShieldCheck className="w-3 h-3 mr-1" /> Autonomous Agent
               </span>
@@ -100,7 +99,6 @@ export const NavigationHeader: React.FC<NavigationHeaderProps> = ({
 
           {/* Right Action Controls */}
           <div className="flex items-center space-x-2 sm:space-x-3">
-            
             {/* Auto-Pilot Trigger Button */}
             <button
               onClick={onRunFollowupCycle}
@@ -158,7 +156,6 @@ export const NavigationHeader: React.FC<NavigationHeaderProps> = ({
               )}
             </div>
           </div>
-
         </div>
 
         {/* Mobile Sub-Nav */}
@@ -166,9 +163,7 @@ export const NavigationHeader: React.FC<NavigationHeaderProps> = ({
           <button
             onClick={() => setActiveTab('resident')}
             className={`flex items-center space-x-1 px-3 py-1.5 rounded text-xs font-bold uppercase tracking-wider ${
-              activeTab === 'resident'
-                ? 'bg-[#1A1A1A] text-white'
-                : 'text-[#666660] dark:text-slate-400'
+              activeTab === 'resident' ? 'bg-[#1A1A1A] text-white' : 'text-[#666660] dark:text-slate-400'
             }`}
           >
             <MessageSquare className="w-3.5 h-3.5" />
@@ -177,9 +172,7 @@ export const NavigationHeader: React.FC<NavigationHeaderProps> = ({
           <button
             onClick={() => setActiveTab('manager')}
             className={`flex items-center space-x-1 px-3 py-1.5 rounded text-xs font-bold uppercase tracking-wider ${
-              activeTab === 'manager'
-                ? 'bg-[#1A1A1A] text-white'
-                : 'text-[#666660] dark:text-slate-400'
+              activeTab === 'manager' ? 'bg-[#1A1A1A] text-white' : 'text-[#666660] dark:text-slate-400'
             }`}
           >
             <LayoutDashboard className="w-3.5 h-3.5" />
@@ -188,16 +181,13 @@ export const NavigationHeader: React.FC<NavigationHeaderProps> = ({
           <button
             onClick={() => setActiveTab('vendors')}
             className={`flex items-center space-x-1 px-3 py-1.5 rounded text-xs font-bold uppercase tracking-wider ${
-              activeTab === 'vendors'
-                ? 'bg-[#1A1A1A] text-white'
-                : 'text-[#666660] dark:text-slate-400'
+              activeTab === 'vendors' ? 'bg-[#1A1A1A] text-white' : 'text-[#666660] dark:text-slate-400'
             }`}
           >
             <Users className="w-3.5 h-3.5" />
             <span>Vendors</span>
           </button>
         </div>
-
       </div>
     </header>
   );

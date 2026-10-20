@@ -3,6 +3,7 @@ import 'dotenv/config';
 // `new PrismaClient()` here fails at construction.
 import { prisma } from '../src/database/prisma';
 import { hashPassword } from '../src/auth/authUtils';
+import { canonicalPhone } from '../src/services/phone';
 
 async function main() {
   const minAgo = (m: number) => new Date(Date.now() - m * 60000).toISOString();
@@ -13,11 +14,17 @@ async function main() {
       societyName: 'Shree Ram Enclave RWA, Powai',
       address: 'Powai, Mumbai',
       tagline: 'AI-powered maintenance coordination for residents and managers',
-      introText: 'This society uses SocietyOps AI to keep maintenance simple, transparent, and fast. Residents can report issues in natural language, while the maintenance team manages vendors, tickets, and escalations from one place.',
+      introText:
+        'This society uses SocietyOps AI to keep maintenance simple, transparent, and fast. Residents can report issues in natural language, while the maintenance team manages vendors, tickets, and escalations from one place.',
       maintenanceContact: 'Mr. Arvind Sharma',
       maintenancePhone: '+91 98765 11111',
       maintenanceEmail: 'maintenance@srerwa.org',
-      highlights: ['Resident complaint intake', 'Auto vendor dispatch', 'Escalations & SLA tracking', 'Admin access tokens'],
+      highlights: [
+        'Resident complaint intake',
+        'Auto vendor dispatch',
+        'Escalations & SLA tracking',
+        'Admin access tokens',
+      ],
       lastUpdatedBy: 'Maintenance Team',
       updatedAt: new Date().toISOString(),
     },
@@ -120,10 +127,42 @@ async function main() {
   });
 
   const residents = [
-    { id: 'RES-001', name: 'Vikram Mehta', flatNumber: 'B-402', role: 'resident', phone: '+91 98210 99887', email: 'vikram@example.com', password: 'vikram123' },
-    { id: 'RES-002', name: 'Mrs. Ananya Sharma', flatNumber: 'A-101', role: 'resident', phone: '+91 99870 11223', email: 'ananya@example.com', password: 'ananya123' },
-    { id: 'RES-003', name: 'Mr. Arvind Sharma', flatNumber: 'Maintenance Office', role: 'maintenance', phone: '+91 98765 11111', email: 'maintenance@srerwa.org', password: 'arvind123' },
-    { id: 'RES-004', name: 'Admin Desk', flatNumber: 'Admin', role: 'admin', phone: '+91 98000 00000', email: 'admin@srerwa.org', password: 'admin123' },
+    {
+      id: 'RES-001',
+      name: 'Vikram Mehta',
+      flatNumber: 'B-402',
+      role: 'resident',
+      phone: '+91 98210 99887',
+      email: 'vikram@example.com',
+      password: 'vikram123',
+    },
+    {
+      id: 'RES-002',
+      name: 'Mrs. Ananya Sharma',
+      flatNumber: 'A-101',
+      role: 'resident',
+      phone: '+91 99870 11223',
+      email: 'ananya@example.com',
+      password: 'ananya123',
+    },
+    {
+      id: 'RES-003',
+      name: 'Mr. Arvind Sharma',
+      flatNumber: 'Maintenance Office',
+      role: 'maintenance',
+      phone: '+91 98765 11111',
+      email: 'maintenance@srerwa.org',
+      password: 'arvind123',
+    },
+    {
+      id: 'RES-004',
+      name: 'Admin Desk',
+      flatNumber: 'Admin',
+      role: 'admin',
+      phone: '+91 98000 00000',
+      email: 'admin@srerwa.org',
+      password: 'admin123',
+    },
   ];
 
   for (const r of residents) {
@@ -134,7 +173,8 @@ async function main() {
         name: r.name,
         flatNumber: r.flatNumber,
         role: r.role,
-        phone: r.phone,
+        // Stored canonical, as registration stores it; login looks it up that way.
+        phone: canonicalPhone(r.phone)!,
         email: r.email || '',
         status: 'active',
         accessToken: `TOK-${r.role.toUpperCase()}-100${r.id.split('-')[1]}`,
@@ -153,7 +193,8 @@ async function main() {
       residentName: 'Vikram Mehta',
       residentPhone: '+91 98210 99887',
       issueCategory: 'Plumbing',
-      description: 'Bhaiya B-402 ke master bathroom mein flush pipe continuously leak kar raha hai. Paani floor par bhar gaya hai urgent please.',
+      description:
+        'Bhaiya B-402 ke master bathroom mein flush pipe continuously leak kar raha hai. Paani floor par bhar gaya hai urgent please.',
       urgency: 'High',
       status: 'Vendor Assigned',
       assignedVendorId: 'VND-01',
@@ -163,9 +204,30 @@ async function main() {
       images: ['https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=600&q=80'],
       societyName: 'Shree Ram Enclave, Powai',
       timeline: [
-        { id: 'TL-1', timestamp: minAgo(25), title: 'Complaint Registered', description: 'Intake Agent auto-extracted issue, flat B-402, urgency High.', actor: 'Intake Agent', type: 'created' },
-        { id: 'TL-2', timestamp: minAgo(24), title: 'Vendor Dispatched', description: 'Dispatcher Agent assigned Ramesh Kumar Plumber (4.9 stars) based on category and proximity.', actor: 'Dispatcher Agent', type: 'assigned' },
-        { id: 'TL-3', timestamp: minAgo(20), title: 'Resident Notified via WhatsApp', description: 'Communication Agent sent update in Hinglish with vendor details and 20 min ETA.', actor: 'Communication Agent', type: 'notified' },
+        {
+          id: 'TL-1',
+          timestamp: minAgo(25),
+          title: 'Complaint Registered',
+          description: 'Intake Agent auto-extracted issue, flat B-402, urgency High.',
+          actor: 'Intake Agent',
+          type: 'created',
+        },
+        {
+          id: 'TL-2',
+          timestamp: minAgo(24),
+          title: 'Vendor Dispatched',
+          description: 'Dispatcher Agent assigned Ramesh Kumar Plumber (4.9 stars) based on category and proximity.',
+          actor: 'Dispatcher Agent',
+          type: 'assigned',
+        },
+        {
+          id: 'TL-3',
+          timestamp: minAgo(20),
+          title: 'Resident Notified via WhatsApp',
+          description: 'Communication Agent sent update in Hinglish with vendor details and 20 min ETA.',
+          actor: 'Communication Agent',
+          type: 'notified',
+        },
       ],
     },
     {
@@ -184,9 +246,30 @@ async function main() {
       images: [],
       societyName: 'Shree Ram Enclave, Powai',
       timeline: [
-        { id: 'TL-10', timestamp: minAgo(120), title: 'Ticket Created', description: 'Intercom fault registered.', actor: 'Intake Agent', type: 'created' },
-        { id: 'TL-11', timestamp: minAgo(110), title: 'Vendor Assigned', description: 'SecureComm Technician assigned.', actor: 'Dispatcher Agent', type: 'assigned' },
-        { id: 'TL-12', timestamp: minAgo(15), title: 'Work Completed & Verified', description: 'Wiring repaired at junction box. Resident confirmed resolution.', actor: 'Resident', type: 'closed' },
+        {
+          id: 'TL-10',
+          timestamp: minAgo(120),
+          title: 'Ticket Created',
+          description: 'Intercom fault registered.',
+          actor: 'Intake Agent',
+          type: 'created',
+        },
+        {
+          id: 'TL-11',
+          timestamp: minAgo(110),
+          title: 'Vendor Assigned',
+          description: 'SecureComm Technician assigned.',
+          actor: 'Dispatcher Agent',
+          type: 'assigned',
+        },
+        {
+          id: 'TL-12',
+          timestamp: minAgo(15),
+          title: 'Work Completed & Verified',
+          description: 'Wiring repaired at junction box. Resident confirmed resolution.',
+          actor: 'Resident',
+          type: 'closed',
+        },
       ],
     },
     {
@@ -206,8 +289,22 @@ async function main() {
       images: [],
       societyName: 'Shree Ram Enclave, Powai',
       timeline: [
-        { id: 'TL-20', timestamp: minAgo(15), title: 'EMERGENCY TICKET RAISED', description: 'Lift entrapment detected. High Urgency marked.', actor: 'Intake Agent', type: 'created' },
-        { id: 'TL-21', timestamp: minAgo(14), title: 'AUTO-ESCALATION TRIGGERED', description: 'Follow-up Agent auto-escalated ticket & alerted RWA President + Otis Rapid Response team.', actor: 'Follow-up Agent', type: 'escalated' },
+        {
+          id: 'TL-20',
+          timestamp: minAgo(15),
+          title: 'EMERGENCY TICKET RAISED',
+          description: 'Lift entrapment detected. High Urgency marked.',
+          actor: 'Intake Agent',
+          type: 'created',
+        },
+        {
+          id: 'TL-21',
+          timestamp: minAgo(14),
+          title: 'AUTO-ESCALATION TRIGGERED',
+          description: 'Follow-up Agent auto-escalated ticket & alerted RWA President + Otis Rapid Response team.',
+          actor: 'Follow-up Agent',
+          type: 'escalated',
+        },
       ],
     },
     {
@@ -222,7 +319,14 @@ async function main() {
       images: [],
       societyName: 'Shree Ram Enclave, Powai',
       timeline: [
-        { id: 'TL-30', timestamp: minAgo(45), title: 'Ticket Created', description: 'Corridor lighting ticket registered.', actor: 'Intake Agent', type: 'created' },
+        {
+          id: 'TL-30',
+          timestamp: minAgo(45),
+          title: 'Ticket Created',
+          description: 'Corridor lighting ticket registered.',
+          actor: 'Intake Agent',
+          type: 'created',
+        },
       ],
     },
   ];
@@ -243,9 +347,40 @@ async function main() {
   }
 
   const notifications = [
-    { ticketId: 'SOC-1042', recipientType: 'resident', recipientName: 'Vikram Mehta', phone: '+91 98210 99887', message: 'Namaste Vikram ji! Ticket #SOC-1042 created. Ramesh Plumber (4.9 stars) has been assigned and will arrive in approx 20 mins.', channel: 'WhatsApp', language: 'Hinglish', status: 'Delivered', timestamp: minAgo(20) },
-    { ticketId: 'SOC-1042', recipientType: 'vendor', recipientName: 'Ramesh Kumar Plumber', phone: '+91 98201 44321', message: 'NEW JOB ASSIGNED: Ticket #SOC-1042 at Flat B-402.', channel: 'WhatsApp', language: 'English', status: 'Read', timestamp: minAgo(22) },
-    { ticketId: 'SOC-1040', recipientType: 'facility_manager', recipientName: 'RWA President Mr. Verma', phone: '+91 98000 11111', message: 'URGENT ESCALATION: Ticket #SOC-1040 - Tower B Lift B2 stuck.', channel: 'Push Notification', language: 'English', status: 'Delivered', timestamp: minAgo(14) },
+    {
+      ticketId: 'SOC-1042',
+      recipientType: 'resident',
+      recipientName: 'Vikram Mehta',
+      phone: '+91 98210 99887',
+      message:
+        'Namaste Vikram ji! Ticket #SOC-1042 created. Ramesh Plumber (4.9 stars) has been assigned and will arrive in approx 20 mins.',
+      channel: 'WhatsApp',
+      language: 'Hinglish',
+      status: 'Delivered',
+      timestamp: minAgo(20),
+    },
+    {
+      ticketId: 'SOC-1042',
+      recipientType: 'vendor',
+      recipientName: 'Ramesh Kumar Plumber',
+      phone: '+91 98201 44321',
+      message: 'NEW JOB ASSIGNED: Ticket #SOC-1042 at Flat B-402.',
+      channel: 'WhatsApp',
+      language: 'English',
+      status: 'Read',
+      timestamp: minAgo(22),
+    },
+    {
+      ticketId: 'SOC-1040',
+      recipientType: 'facility_manager',
+      recipientName: 'RWA President Mr. Verma',
+      phone: '+91 98000 11111',
+      message: 'URGENT ESCALATION: Ticket #SOC-1040 - Tower B Lift B2 stuck.',
+      channel: 'Push Notification',
+      language: 'English',
+      status: 'Delivered',
+      timestamp: minAgo(14),
+    },
   ];
 
   for (const n of notifications) {
@@ -253,9 +388,30 @@ async function main() {
   }
 
   const logs = [
-    { id: 'LOG-1', agentName: 'Intake Agent', action: 'Extracted Complaint Metadata', details: 'Parsed Hinglish text from Vikram Mehta (B-402). Extracted Urgency: High, Category: Plumbing.', timestamp: minAgo(25), ticketId: 'SOC-1042' },
-    { id: 'LOG-2', agentName: 'Dispatcher Agent', action: 'Matched Best Vendor', details: 'Evaluated 3 plumbers. Selected Ramesh Kumar (Rating: 4.9, Active Jobs: 1, ETA: 20 mins).', timestamp: minAgo(24), ticketId: 'SOC-1042' },
-    { id: 'LOG-3', agentName: 'Follow-up Agent', action: 'Auto-Escalation Execution', details: 'Detected Lift entrapment keyword. Bumped status to Escalated and notified RWA safety committee.', timestamp: minAgo(14), ticketId: 'SOC-1040' },
+    {
+      id: 'LOG-1',
+      agentName: 'Intake Agent',
+      action: 'Extracted Complaint Metadata',
+      details: 'Parsed Hinglish text from Vikram Mehta (B-402). Extracted Urgency: High, Category: Plumbing.',
+      timestamp: minAgo(25),
+      ticketId: 'SOC-1042',
+    },
+    {
+      id: 'LOG-2',
+      agentName: 'Dispatcher Agent',
+      action: 'Matched Best Vendor',
+      details: 'Evaluated 3 plumbers. Selected Ramesh Kumar (Rating: 4.9, Active Jobs: 1, ETA: 20 mins).',
+      timestamp: minAgo(24),
+      ticketId: 'SOC-1042',
+    },
+    {
+      id: 'LOG-3',
+      agentName: 'Follow-up Agent',
+      action: 'Auto-Escalation Execution',
+      details: 'Detected Lift entrapment keyword. Bumped status to Escalated and notified RWA safety committee.',
+      timestamp: minAgo(14),
+      ticketId: 'SOC-1040',
+    },
   ];
 
   for (const l of logs) {

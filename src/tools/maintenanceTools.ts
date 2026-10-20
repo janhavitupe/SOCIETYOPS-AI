@@ -1,10 +1,11 @@
-import { ticketRepo, vendorRepo, agentLogRepo } from '../database/repositories';
+import { ticketRepo, vendorRepo } from '../database/repositories';
 import { sendNotification } from '../services/notifications';
 import type { ChatCompletionTool } from 'openai/resources/chat/completions';
 import { IssueCategory, UrgencyLevel, TicketStatus } from '../types';
 import { buildDailyReport } from '../services/analytics';
 import { JwtPayload } from '../auth/authUtils';
 import { canAccessAllTickets, canAccessFlat } from '../auth/authMiddleware';
+import { closeRefusal, escalateRefusal } from '../services/ticketRules';
 
 const str = (description: string) => ({ type: 'string' as const, description });
 
@@ -18,14 +19,19 @@ export const maintenanceToolDeclarations: ChatCompletionTool[] = [
     type: 'function',
     function: {
       name: 'create_ticket',
-      description: 'Create a new maintenance ticket after extracting issue category, urgency and description from the resident complaint.',
+      description:
+        'Create a new maintenance ticket after extracting issue category, urgency and description from the resident complaint.',
       parameters: {
         type: 'object',
         properties: {
-          flatNumber: str('Flat or Tower number, e.g. "B-402". Ignored for residents, who are always pinned to their own flat.'),
+          flatNumber: str(
+            'Flat or Tower number, e.g. "B-402". Ignored for residents, who are always pinned to their own flat.',
+          ),
           residentName: str('Name of the resident reporting the issue. Ignored for residents.'),
           residentPhone: str('Phone number of the resident'),
-          issueCategory: str('One of: Plumbing, Electrical, Lift & Elevator, Carpentry & Locks, AC & Appliances, Cleaning & Pest, Security & Intercom, General Repairs'),
+          issueCategory: str(
+            'One of: Plumbing, Electrical, Lift & Elevator, Carpentry & Locks, AC & Appliances, Cleaning & Pest, Security & Intercom, General Repairs',
+          ),
           description: str('Detailed description of the maintenance problem'),
           urgency: str('Urgency level: High, Medium or Low'),
         },
@@ -222,8 +228,8 @@ export async function executeToolCall(name: string, args: any, actor: ToolActor)
       // Identity comes from the session. A resident is pinned to their own flat
       // whatever the model was persuaded to pass.
       const ticket = await ticketRepo.create({
-        flatNumber: isManager ? (args.flatNumber || actor.flatNumber) : actor.flatNumber,
-        residentName: isManager ? (args.residentName || actor.name) : actor.name,
+        flatNumber: isManager ? args.flatNumber || actor.flatNumber : actor.flatNumber,
+        residentName: isManager ? args.residentName || actor.name : actor.name,
         residentPhone: args.residentPhone || '+91 98000 00000',
         issueCategory: (args.issueCategory as IssueCategory) || 'General Repairs',
         description: args.description,
@@ -233,7 +239,7 @@ export async function executeToolCall(name: string, args: any, actor: ToolActor)
       });
 
       const bestVendor = await vendorRepo.findBestForCategory(ticket.issueCategory);
-      let assignedVendor = null;
+      let assignedVendor: any = null;
       if (bestVendor) {
         await ticketRepo.assignVendor(ticket.id, bestVendor.id, bestVendor.avgResolutionTime);
         assignedVendor = bestVendor;
@@ -273,7 +279,7 @@ export async function executeToolCall(name: string, args: any, actor: ToolActor)
         args.category,
         args.urgency,
         args.status,
-        isManager ? undefined : actor.flatNumber
+        isManager ? undefined : actor.flatNumber,
       );
       return { success: true, count: tickets.length, tickets };
     }
@@ -338,6 +344,9 @@ export async function executeToolCall(name: string, args: any, actor: ToolActor)
       const { error, ticket } = await ticketForActor(args.ticketId, actor);
       if (error) return denied(error);
 
+      const refusal = escalateRefusal(ticket, isManager);
+      if (refusal) return denied(refusal);
+
       const escalated = await ticketRepo.escalateTicket(ticket.id, args.reason || 'Escalated via assistant');
       return { success: !!escalated, ticket: escalated };
     }
@@ -345,6 +354,9 @@ export async function executeToolCall(name: string, args: any, actor: ToolActor)
     case 'close_ticket': {
       const { error, ticket } = await ticketForActor(args.ticketId, actor);
       if (error) return denied(error);
+
+      const refusal = closeRefusal(ticket, isManager);
+      if (refusal) return denied(refusal);
 
       // Feedback used to be accepted by the tool schema and then dropped.
       const closed = await ticketRepo.update(ticket.id, {

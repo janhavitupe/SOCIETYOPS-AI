@@ -1,4 +1,4 @@
-import { PrismaClient, AgentActivityLog as PrismaLog } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 
 export class AgentLogRepository {
   constructor(private prisma: PrismaClient) {}
@@ -10,17 +10,9 @@ export class AgentLogRepository {
     });
   }
 
-  async create(data: {
-    agentName: string;
-    action: string;
-    details: string;
-    ticketId?: string;
-  }): Promise<any> {
+  async create(data: { agentName: string; action: string; details: string; ticketId?: string }): Promise<any> {
     return this.prisma.agentActivityLog.create({
-      data: {
-        ...data,
-        timestamp: new Date().toISOString(),
-      },
+      data,
     });
   }
 

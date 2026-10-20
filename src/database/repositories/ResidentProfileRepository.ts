@@ -1,4 +1,4 @@
-import { PrismaClient, ResidentProfile as PrismaResident } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 
 export class ResidentProfileRepository {
   constructor(private prisma: PrismaClient) {}
@@ -14,9 +14,10 @@ export class ResidentProfileRepository {
     return this.prisma.residentProfile.findFirst({ where: { id, deletedAt: null } });
   }
 
+  /** phone must already be canonical (services/phone); the flat matches case-insensitively. */
   async findByFlatAndPhone(flatNumber: string, phone: string): Promise<any | undefined> {
     return this.prisma.residentProfile.findFirst({
-      where: { flatNumber, phone, deletedAt: null },
+      where: { flatNumber: { equals: flatNumber.trim(), mode: 'insensitive' }, phone, deletedAt: null },
     });
   }
 
@@ -24,7 +25,6 @@ export class ResidentProfileRepository {
     return this.prisma.residentProfile.create({
       data: {
         ...data,
-        createdAt: new Date().toISOString(),
         status: 'active',
         tokensGenerated: 0,
       },
@@ -40,7 +40,7 @@ export class ResidentProfileRepository {
       data: {
         accessToken: `TOK-${resident.role.toUpperCase()}-${Date.now().toString().slice(-4)}`,
         tokensGenerated: { increment: 1 },
-        lastActiveAt: new Date().toISOString(),
+        lastActiveAt: new Date(),
       },
     });
   }
@@ -48,7 +48,7 @@ export class ResidentProfileRepository {
   async updateLastActive(residentId: string): Promise<void> {
     await this.prisma.residentProfile.update({
       where: { id: residentId },
-      data: { lastActiveAt: new Date().toISOString() },
+      data: { lastActiveAt: new Date() },
     });
   }
 

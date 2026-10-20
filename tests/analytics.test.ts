@@ -32,7 +32,7 @@ describe('buildDailyReport', () => {
         ticket({ status: 'Closed' }),
         ticket({ status: 'Escalated' }),
       ],
-      NOW
+      NOW,
     );
     expect(report.openTickets).toBe(3);
     expect(report.inProgressTickets).toBe(2);
@@ -47,7 +47,7 @@ describe('buildDailyReport', () => {
         ticket({ issueCategory: 'Electrical' }),
         ticket({ issueCategory: 'Plumbing' }),
       ],
-      NOW
+      NOW,
     );
     expect(report.frequentCategory).toBe('Electrical');
   });
@@ -62,7 +62,7 @@ describe('resolvedToday', () => {
         // Finished, but weeks ago: previously this still counted as "today".
         ticket({ status: 'Closed', resolvedAt: new Date('2026-09-01T09:00:00.000Z') }),
       ],
-      NOW
+      NOW,
     );
     expect(report.resolvedToday).toBe(2);
   });
@@ -89,7 +89,7 @@ describe('average response time', () => {
           timeline: [{ type: 'assigned', timestamp: minutesAgo(30).toISOString() }],
         }),
       ],
-      NOW
+      NOW,
     );
     // 20 minutes and 10 minutes.
     expect(report.avgResponseTimeMinutes).toBe(15);
@@ -102,9 +102,12 @@ describe('average response time', () => {
           createdAt: minutesAgo(50),
           timeline: [{ type: 'assigned', timestamp: minutesAgo(30).toISOString() }],
         }),
-        ticket({ createdAt: minutesAgo(200), timeline: [{ type: 'created', timestamp: minutesAgo(200).toISOString() }] }),
+        ticket({
+          createdAt: minutesAgo(200),
+          timeline: [{ type: 'created', timestamp: minutesAgo(200).toISOString() }],
+        }),
       ],
-      NOW
+      NOW,
     );
     expect(report.avgResponseTimeMinutes).toBe(20);
   });
@@ -119,7 +122,7 @@ describe('top performing vendor', () => {
         ticket({ status: 'Closed', assignedVendorName: 'Satish Electrician' }),
         ticket({ status: 'Open', assignedVendorName: 'Satish Electrician' }),
       ],
-      NOW
+      NOW,
     );
     expect(report.topPerformingVendor).toBe('Ramesh Kumar Plumber');
   });
@@ -132,34 +135,22 @@ describe('top performing vendor', () => {
 
 describe('SLA risk', () => {
   it('counts a ticket already past its deadline', () => {
-    const report = buildDailyReport(
-      [ticket({ urgency: 'High', slaDueAt: hoursFromNow(-1) })],
-      NOW
-    );
+    const report = buildDailyReport([ticket({ urgency: 'High', slaDueAt: hoursFromNow(-1) })], NOW);
     expect(report.slaAtRiskCount).toBe(1);
   });
 
   it('ignores a ticket with plenty of time left', () => {
-    const report = buildDailyReport(
-      [ticket({ urgency: 'Low', slaDueAt: hoursFromNow(20) })],
-      NOW
-    );
+    const report = buildDailyReport([ticket({ urgency: 'Low', slaDueAt: hoursFromNow(20) })], NOW);
     expect(report.slaAtRiskCount).toBe(0);
   });
 
   it('ignores a finished ticket even if its deadline passed', () => {
-    const report = buildDailyReport(
-      [ticket({ status: 'Closed', urgency: 'High', slaDueAt: hoursFromNow(-5) })],
-      NOW
-    );
+    const report = buildDailyReport([ticket({ status: 'Closed', urgency: 'High', slaDueAt: hoursFromNow(-5) })], NOW);
     expect(report.slaAtRiskCount).toBe(0);
   });
 
   it('surfaces overdue work in the recommendations', () => {
-    const report = buildDailyReport(
-      [ticket({ urgency: 'High', slaDueAt: hoursFromNow(-3) })],
-      NOW
-    );
+    const report = buildDailyReport([ticket({ urgency: 'High', slaDueAt: hoursFromNow(-3) })], NOW);
     expect(report.recommendations.join(' ')).toMatch(/past the response deadline/i);
   });
 });

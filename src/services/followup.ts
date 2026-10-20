@@ -22,9 +22,8 @@ function looksLikeEmergency(description: string): boolean {
  * unassigned, escalate emergencies and overdue work, and chase vendors who
  * have not confirmed.
  *
- * Extracted from the route handler so it can also run on a timer. It was
- * previously reachable only by a manager pressing a button in the dashboard,
- * which is not what "autonomous" implies.
+ * Runs on a schedule from the job queue (services/jobs), and on demand from
+ * POST /api/followup/run.
  */
 export async function runFollowupCycle(now: Date = new Date()): Promise<FollowupResult> {
   const allTickets = await ticketRepo.findAll();
@@ -84,37 +83,4 @@ export async function runFollowupCycle(now: Date = new Date()): Promise<Followup
   });
 
   return { checkedCount: allTickets.length, escalatedTickets, remindersSent, dispatched };
-}
-
-/**
- * Starts the timer that runs the cycle unattended.
- *
- * Off by default: set FOLLOWUP_INTERVAL_MINUTES to enable it. Returns a
- * stop function, and nothing when the timer is disabled.
- */
-export function startFollowupScheduler(
-  onError: (err: Error) => void = () => {}
-): (() => void) | null {
-  const minutes = Number(process.env.FOLLOWUP_INTERVAL_MINUTES);
-  if (!Number.isFinite(minutes) || minutes <= 0) return null;
-
-  let running = false;
-
-  const timer = setInterval(async () => {
-    // A slow cycle must not overlap itself and double-dispatch.
-    if (running) return;
-    running = true;
-    try {
-      await runFollowupCycle();
-    } catch (err) {
-      onError(err as Error);
-    } finally {
-      running = false;
-    }
-  }, minutes * 60 * 1000);
-
-  // Do not hold the process open purely for this timer.
-  timer.unref?.();
-
-  return () => clearInterval(timer);
 }

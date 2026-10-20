@@ -112,6 +112,19 @@ describe('ticket creation', () => {
     expect(res.body.flatNumber).toBe('A-101');
   });
 
+  it('rejects an unknown category', async () => {
+    const res = await api
+      .post('/api/tickets')
+      .set(bearer(residentToken))
+      .send({ issueCategory: 'Rocket Repair', description: 'x', urgency: 'Low' });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects a repeated query parameter instead of passing an array through', async () => {
+    const res = await api.get('/api/tickets?status=Open&status=Closed').set(bearer(maintenanceToken));
+    expect(res.status).toBe(400);
+  });
+
   it('rejects a ticket with no description or category', async () => {
     const res = await api.post('/api/tickets').set(bearer(residentToken)).send({ urgency: 'Low' });
     expect(res.status).toBe(400);
@@ -125,10 +138,18 @@ describe('ticket creation', () => {
   });
 
   it('does not reuse an id after a ticket is soft deleted', async () => {
-    const first = await createTicket(residentToken, { issueCategory: 'Plumbing', description: 'before', urgency: 'Low' });
+    const first = await createTicket(residentToken, {
+      issueCategory: 'Plumbing',
+      description: 'before',
+      urgency: 'Low',
+    });
     await prisma.ticket.update({ where: { id: first.body.id }, data: { deletedAt: new Date() } });
 
-    const second = await createTicket(residentToken, { issueCategory: 'Plumbing', description: 'after', urgency: 'Low' });
+    const second = await createTicket(residentToken, {
+      issueCategory: 'Plumbing',
+      description: 'after',
+      urgency: 'Low',
+    });
     expect(second.body.id).not.toBe(first.body.id);
   });
 });
@@ -145,12 +166,12 @@ describe('ticket mutation', () => {
 
   it('applies a whitelisted field for a manager', async () => {
     const made = await createTicket(maintenanceToken, {
-      issueCategory: 'Plumbing', description: 'patch me', urgency: 'Low', flatNumber: 'B-402',
+      issueCategory: 'Plumbing',
+      description: 'patch me',
+      urgency: 'Low',
+      flatNumber: 'B-402',
     });
-    const res = await api
-      .patch(`/api/tickets/${made.body.id}`)
-      .set(bearer(maintenanceToken))
-      .send({ urgency: 'High' });
+    const res = await api.patch(`/api/tickets/${made.body.id}`).set(bearer(maintenanceToken)).send({ urgency: 'High' });
 
     expect(res.status).toBe(200);
     expect(res.body.urgency).toBe('High');
@@ -158,7 +179,10 @@ describe('ticket mutation', () => {
 
   it('ignores fields outside the whitelist rather than writing them', async () => {
     const made = await createTicket(maintenanceToken, {
-      issueCategory: 'Plumbing', description: 'protected', urgency: 'Low', flatNumber: 'B-402',
+      issueCategory: 'Plumbing',
+      description: 'protected',
+      urgency: 'Low',
+      flatNumber: 'B-402',
     });
 
     const res = await api
@@ -174,7 +198,10 @@ describe('ticket mutation', () => {
 
   it('rejects a PATCH carrying only unknown fields', async () => {
     const made = await createTicket(maintenanceToken, {
-      issueCategory: 'Plumbing', description: 'nothing to do', urgency: 'Low', flatNumber: 'B-402',
+      issueCategory: 'Plumbing',
+      description: 'nothing to do',
+      urgency: 'Low',
+      flatNumber: 'B-402',
     });
     const res = await api
       .patch(`/api/tickets/${made.body.id}`)
@@ -184,22 +211,96 @@ describe('ticket mutation', () => {
     expect(res.status).toBe(400);
   });
 
-  it('lets a resident close their own ticket and records resolvedAt', async () => {
+  it('lets a resident close their own ticket once worked on and records resolvedAt', async () => {
     const made = await createTicket(residentToken, {
-      issueCategory: 'Plumbing', description: 'close me', urgency: 'Low',
+      issueCategory: 'Plumbing',
+      description: 'close me',
+      urgency: 'Low',
     });
+    await api.patch(`/api/tickets/${made.body.id}`).set(bearer(maintenanceToken)).send({ status: 'In Progress' });
 
-    const res = await api.post(`/api/tickets/${made.body.id}/close`).set(bearer(residentToken));
+    const res = await api
+      .post(`/api/tickets/${made.body.id}/close`)
+      .set(bearer(residentToken))
+      .send({ feedback: 'Fixed properly', rating: 5 });
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('Closed');
 
     const row = await prisma.ticket.findUnique({ where: { id: made.body.id } });
     expect(row?.resolvedAt).not.toBeNull();
+    expect(row?.residentFeedback).toBe('Fixed properly');
+    expect(row?.residentRating).toBe(5);
+  });
+
+  it('refuses a resident closing a ticket nobody has worked on', async () => {
+    const made = await createTicket(residentToken, {
+      issueCategory: 'Plumbing',
+      description: 'not started',
+      urgency: 'Low',
+    });
+    const res = await api.post(`/api/tickets/${made.body.id}/close`).set(bearer(residentToken));
+    expect(res.status).toBe(409);
+  });
+
+  it('refuses closing a ticket twice, even for a manager', async () => {
+    const made = await createTicket(maintenanceToken, {
+      issueCategory: 'Plumbing',
+      description: 'close twice',
+      urgency: 'Low',
+      flatNumber: 'B-402',
+    });
+    expect((await api.post(`/api/tickets/${made.body.id}/close`).set(bearer(maintenanceToken))).status).toBe(200);
+    expect((await api.post(`/api/tickets/${made.body.id}/close`).set(bearer(maintenanceToken))).status).toBe(409);
+  });
+
+  it('refuses a resident escalating an unassigned ticket inside its deadline', async () => {
+    const made = await createTicket(residentToken, {
+      issueCategory: 'Plumbing',
+      description: 'just raised',
+      urgency: 'Low',
+    });
+    await prisma.ticket.update({ where: { id: made.body.id }, data: { status: 'Open' } });
+
+    const res = await api.post(`/api/tickets/${made.body.id}/escalate`).set(bearer(residentToken)).send({});
+    expect(res.status).toBe(409);
+  });
+
+  it('lets a resident escalate an unassigned ticket past its deadline', async () => {
+    const made = await createTicket(residentToken, {
+      issueCategory: 'Plumbing',
+      description: 'forgotten',
+      urgency: 'Low',
+    });
+    await prisma.ticket.update({
+      where: { id: made.body.id },
+      data: { status: 'Open', slaDueAt: new Date(Date.now() - 60_000) },
+    });
+
+    const res = await api
+      .post(`/api/tickets/${made.body.id}/escalate`)
+      .set(bearer(residentToken))
+      .send({ reason: 'Nobody came' });
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('Escalated');
+  });
+
+  it('lets a resident escalate an assigned ticket', async () => {
+    const made = await createTicket(residentToken, {
+      issueCategory: 'Plumbing',
+      description: 'vendor silent',
+      urgency: 'Low',
+    });
+    expect(made.body.status).toBe('Vendor Assigned');
+    const res = await api.post(`/api/tickets/${made.body.id}/escalate`).set(bearer(residentToken)).send({});
+    expect(res.status).toBe(200);
   });
 
   it('refuses a resident closing a ticket belonging to another flat', async () => {
     const foreign = await createTicket(maintenanceToken, {
-      issueCategory: 'Plumbing', description: 'not yours', urgency: 'Low', flatNumber: 'A-101',
+      issueCategory: 'Plumbing',
+      description: 'not yours',
+      urgency: 'Low',
+      flatNumber: 'A-101',
     });
     const res = await api.post(`/api/tickets/${foreign.body.id}/close`).set(bearer(residentToken));
     expect(res.status).toBe(403);

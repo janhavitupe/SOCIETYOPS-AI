@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
+import { describe, it, expect, afterAll, afterEach } from 'vitest';
 import {
   sendNotification,
   setNotificationProvider,
@@ -188,8 +188,14 @@ describe('vendor load', () => {
     const chosen = await vendorRepo.findBestForCategory('Plumbing');
     expect(chosen.id).toBe(worse.id);
 
-    await prisma.vendor.update({ where: { id: a.id }, data: { activeJobsCount: before.a, availability: a.availability } });
-    await prisma.vendor.update({ where: { id: b.id }, data: { activeJobsCount: before.b, availability: b.availability } });
+    await prisma.vendor.update({
+      where: { id: a.id },
+      data: { activeJobsCount: before.a, availability: a.availability },
+    });
+    await prisma.vendor.update({
+      where: { id: b.id },
+      data: { activeJobsCount: before.b, availability: b.availability },
+    });
   });
 });
 
