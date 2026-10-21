@@ -1,4 +1,4 @@
-import { describe, it, expect, afterAll, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import {
   sendNotification,
   setNotificationProvider,
@@ -8,8 +8,12 @@ import {
   type DispatchResult,
 } from '../src/services/notifications';
 import { ticketRepo, vendorRepo, notificationRepo } from '../src/database/repositories';
-import { prisma } from '../src/database/prisma';
-import { deleteTickets } from './helpers';
+import { prisma, unscopedPrisma } from '../src/database/prisma';
+import { deleteTickets, SOCIETIES } from './helpers';
+import { setTestSociety } from '../src/requestContext';
+
+// The repositories run outside a request here, so give them Shree Ram's scope.
+beforeAll(() => setTestSociety(SOCIETIES.shreeRam));
 
 const created: string[] = [];
 
@@ -34,7 +38,8 @@ afterAll(async () => {
   if (created.length) {
     await deleteTickets(created);
   }
-  await prisma.$disconnect();
+  setTestSociety(undefined);
+  await unscopedPrisma.$disconnect();
 });
 
 describe('toE164', () => {
@@ -166,36 +171,48 @@ describe('vendor load', () => {
   });
 
   it('prefers a less loaded vendor over a marginally better rated one', async () => {
-    const plumbers = await prisma.vendor.findMany({ where: { category: 'Plumbing', deletedAt: null } });
-    if (plumbers.length < 2) return; // seed only guarantees one in some categories
-
-    const [a, b] = plumbers;
-    const before = { a: a.activeJobsCount, b: b.activeJobsCount };
-
-    // Load the higher rated one heavily enough to lose on score.
-    const better = a.rating >= b.rating ? a : b;
-    const worse = better.id === a.id ? b : a;
-
-    await prisma.vendor.update({
-      where: { id: better.id },
-      data: { activeJobsCount: better.activeJobsCount + 20, availability: 'Available' },
+    // A second plumber for the duration, so the choice is real.
+    const rival = await prisma.vendor.create({
+      data: {
+        id: 'VND-TEST-RIVAL',
+        societyId: SOCIETIES.shreeRam,
+        name: 'Test Rival Plumber',
+        category: 'Plumbing',
+        rating: 4.6,
+        availability: 'Available',
+        phone: '+919800099999',
+        avgResolutionTime: '30 mins',
+        completedJobs: 1,
+        activeJobsCount: 0,
+        skills: [],
+        societyName: 'Shree Ram Enclave, Powai',
+      },
     });
-    await prisma.vendor.update({
-      where: { id: worse.id },
-      data: { activeJobsCount: 0, availability: 'Available' },
-    });
+    const top = await prisma.vendor.findUniqueOrThrow({ where: { id: 'VND-01' } });
 
-    const chosen = await vendorRepo.findBestForCategory('Plumbing');
-    expect(chosen.id).toBe(worse.id);
+    try {
+      // 4.9 with 20 jobs scores below 4.6 with none.
+      await prisma.vendor.update({ where: { id: top.id }, data: { activeJobsCount: 20, availability: 'Available' } });
+      expect((await vendorRepo.findBestForCategory('Plumbing')).id).toBe(rival.id);
+    } finally {
+      await prisma.vendor.update({
+        where: { id: top.id },
+        data: { activeJobsCount: top.activeJobsCount, availability: top.availability },
+      });
+      await prisma.vendor.delete({ where: { id: rival.id } });
+    }
+  });
 
-    await prisma.vendor.update({
-      where: { id: a.id },
-      data: { activeJobsCount: before.a, availability: a.availability },
-    });
-    await prisma.vendor.update({
-      where: { id: b.id },
-      data: { activeJobsCount: before.b, availability: b.availability },
-    });
+  it("never picks another society's vendor", async () => {
+    // Green Valley's plumber is idle; Shree Ram's is loaded. Unscoped, the
+    // dispatcher would pick Green Valley's.
+    const top = await prisma.vendor.findUniqueOrThrow({ where: { id: 'VND-01' } });
+    try {
+      await prisma.vendor.update({ where: { id: top.id }, data: { activeJobsCount: 50 } });
+      expect((await vendorRepo.findBestForCategory('Plumbing')).id).toBe('VND-01');
+    } finally {
+      await prisma.vendor.update({ where: { id: top.id }, data: { activeJobsCount: top.activeJobsCount } });
+    }
   });
 });
 

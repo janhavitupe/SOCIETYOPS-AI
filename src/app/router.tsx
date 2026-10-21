@@ -7,8 +7,8 @@ import {
   redirect,
 } from '@tanstack/react-router';
 import type { AuthContextType } from '@/context/AuthContext';
-import { LoginPage } from '@/components/LoginPage';
-import { RegisterPage } from '@/components/RegisterPage';
+import { LoginPage, SignUpPage } from './pages/AuthPages';
+import { WelcomePage } from './pages/WelcomePage';
 import { AppShell } from './AppShell';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { ErrorPage } from './pages/ErrorPage';
@@ -35,7 +35,9 @@ const rootRoute = createRootRouteWithContext<RouterContext>()({
 /** Signed-in users have no business on the sign-in pages. */
 function leaveIfSignedIn({ context, search }: { context: RouterContext; search: { redirect?: string } }) {
   if (context.auth.isAuthenticated) {
-    throw redirect({ href: safeRedirect(search.redirect) ?? homeFor(context.auth.user?.role) });
+    const home = homeFor(context.auth);
+    // A redirect back into the app only makes sense once there is an app to enter.
+    throw redirect({ href: home === '/welcome' ? home : (safeRedirect(search.redirect) ?? home) });
   }
 }
 
@@ -51,12 +53,24 @@ const loginRoute = createRoute({
   component: LoginPage,
 });
 
-const registerRoute = createRoute({
+const signUpRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: '/register',
+  path: '/signup',
   validateSearch: authSearch,
   beforeLoad: leaveIfSignedIn,
-  component: RegisterPage,
+  component: SignUpPage,
+});
+
+/** Signed in but not yet ready for the app: no name, or no society. */
+const welcomeRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/welcome',
+  beforeLoad: ({ context }) => {
+    if (!context.auth.isAuthenticated) throw redirect({ to: '/login' });
+    const home = homeFor(context.auth);
+    if (home !== '/welcome') throw redirect({ to: home });
+  },
+  component: WelcomePage,
 });
 
 /** Every signed-in page. ?ticket=<id> opens that ticket over whichever page is showing. */
@@ -70,6 +84,7 @@ const appRoute = createRoute({
     if (!context.auth.isAuthenticated) {
       throw redirect({ to: '/login', search: { redirect: location.href } });
     }
+    if (homeFor(context.auth) === '/welcome') throw redirect({ to: '/welcome' });
   },
   component: AppShell,
 });
@@ -78,15 +93,14 @@ const appRoute = createRoute({
 const requireRole =
   (roles: Role[]) =>
   ({ context }: { context: RouterContext }) => {
-    const role = context.auth.user?.role;
-    if (!roles.includes(role)) throw redirect({ to: homeFor(role) });
+    if (!roles.includes(context.auth.user?.role as Role)) throw redirect({ to: homeFor(context.auth) });
   };
 
 const indexRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/',
   beforeLoad: ({ context }) => {
-    throw redirect({ to: homeFor(context.auth.user?.role) });
+    throw redirect({ to: homeFor(context.auth) });
   },
 });
 
@@ -100,7 +114,7 @@ const residentRoute = createRoute({
 const managerRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/manager',
-  beforeLoad: requireRole(['maintenance', 'admin']),
+  beforeLoad: requireRole(['society_admin', 'manager']),
 });
 
 const managerIndexRoute = createRoute({
@@ -125,13 +139,17 @@ const workerRoute = createRoute({
 const platformRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/platform',
-  beforeLoad: requireRole(['platform_admin']),
+  // Platform admins are a property of the user, not a society role.
+  beforeLoad: ({ context }) => {
+    if (context.auth.user?.platformRole !== 'platform_admin') throw redirect({ to: homeFor(context.auth) });
+  },
   component: lazyRouteComponent(() => import('./pages/ComingSoonPage'), 'PlatformHomePage'),
 });
 
 const routeTree = rootRoute.addChildren([
   loginRoute,
-  registerRoute,
+  signUpRoute,
+  welcomeRoute,
   appRoute.addChildren([
     indexRoute,
     residentRoute,

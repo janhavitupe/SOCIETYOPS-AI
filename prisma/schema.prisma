@@ -6,8 +6,300 @@ datasource db {
   provider = "postgresql"
 }
 
+// ---------------------------------------------------------------------------
+// Tenancy. Every row below the "Society data" line belongs to one society,
+// and src/database/prisma.ts adds that society to every query on those models.
+// ---------------------------------------------------------------------------
+
+/// One customer: a housing society, RWA or apartment complex.
+model Society {
+  id                 String    @id @default(cuid())
+  name               String
+  registrationNumber String?
+  address            String    @default("")
+  city               String    @default("")
+  pinCode            String    @default("")
+  /// Storage key of the uploaded logo (services/storage).
+  logoKey            String?
+  timezone           String    @default("Asia/Kolkata")
+  /// onboarding | active | suspended
+  status             String    @default("onboarding")
+  /// The last onboarding wizard step the admin completed, so it can resume.
+  onboardingStep     String?
+  /// Short code in the resident join link (/join/<code>).
+  joinCode           String    @unique
+  plan               String    @default("trial")
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  memberships        Membership[]
+  profile            SocietyProfile?
+  towers             Tower[]
+  flats              Flat[]
+  occupants          FlatOccupant[]
+  commonAreas        CommonArea[]
+  assets             Asset[]
+  invites            Invite[]
+  tickets            Ticket[]
+  vendors            Vendor[]
+  notifications      NotificationLog[]
+  agentLogs          AgentActivityLog[]
+  chatMessages       ChatMessage[]
+}
+
+/// A person's role in one society. Roles live here, not on the user, because
+/// one person can be a resident in one society and a manager in another, or a
+/// resident and a committee member in the same one.
+model Membership {
+  id        String   @id @default(cuid())
+  societyId String
+  society   Society  @relation(fields: [societyId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// society_admin | manager | committee | resident
+  role      String
+  /// invited | pending | active | removed
+  status    String   @default("active")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([societyId, userId, role])
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Identity, managed by Better Auth (src/auth/auth.ts). One login per person.
+// ---------------------------------------------------------------------------
+
+model User {
+  id                  String    @id
+  name                String
+  /// Better Auth requires one. Phone-first users get a placeholder under
+  /// users.societyops.invalid until they give a real address.
+  email               String    @unique
+  emailVerified       Boolean   @default(false)
+  image               String?
+  phoneNumber         String?   @unique
+  phoneNumberVerified Boolean?
+  /// platform_admin for the people who run the service; null for everyone else.
+  platformRole        String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  sessions            Session[]
+  accounts            Account[]
+  memberships         Membership[]
+  occupancies         FlatOccupant[] @relation("occupant")
+  ticketsReported     Ticket[]
+}
+
+model Session {
+  id              String   @id
+  expiresAt       DateTime
+  token           String   @unique
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  ipAddress       String?
+  userAgent       String?
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// The society this session is working in; switched with the society switcher.
+  activeSocietyId String?
+
+  @@index([userId])
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+}
+
+/// OTP codes and other short-lived secrets.
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+}
+
+// ---------------------------------------------------------------------------
+// Society data. Every model here has societyId and is scoped automatically.
+// ---------------------------------------------------------------------------
+
+/// A tower, wing, block or lane: whatever the society groups its flats by.
+model Tower {
+  id          String    @id @default(cuid())
+  societyId   String
+  society     Society   @relation(fields: [societyId], references: [id], onDelete: Cascade)
+  name        String
+  /// tower | wing | block | lane
+  kind        String    @default("tower")
+  floors      Int?
+  liftsCount  Int       @default(0)
+  sortOrder   Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  flats       Flat[]
+  commonAreas CommonArea[]
+  assets      Asset[]
+
+  @@unique([societyId, name])
+}
+
+model Flat {
+  id             String    @id @default(cuid())
+  societyId      String
+  society        Society   @relation(fields: [societyId], references: [id], onDelete: Cascade)
+  towerId        String?
+  tower          Tower?    @relation(fields: [towerId], references: [id], onDelete: SetNull)
+  /// As residents write it, unique within the society: "A-101", "Villa 12".
+  number         String
+  floor          Int?
+  /// 1BHK | 2BHK | 3BHK | 4BHK | shop | office | other
+  type           String?
+  carpetAreaSqft Int?
+  parkingSlots   Int       @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  occupants      FlatOccupant[]
+  invites        Invite[]
+  tickets        Ticket[]
+
+  @@unique([societyId, number])
+  @@index([towerId])
+}
+
+/// A person living in, or owning, a flat. Ending an occupancy keeps the row,
+/// so the flat's history survives a change of tenant.
+model FlatOccupant {
+  id           String    @id @default(cuid())
+  societyId    String
+  society      Society   @relation(fields: [societyId], references: [id], onDelete: Cascade)
+  flatId       String
+  flat         Flat      @relation(fields: [flatId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User      @relation("occupant", fields: [userId], references: [id], onDelete: Cascade)
+  /// owner | tenant | family
+  type         String
+  /// pending | active | ended | rejected
+  status       String    @default("pending")
+  moveInDate   DateTime?
+  moveOutDate  DateTime?
+  approvedById String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([flatId])
+  @@index([userId])
+}
+
+model CommonArea {
+  id        String    @id @default(cuid())
+  societyId String
+  society   Society   @relation(fields: [societyId], references: [id], onDelete: Cascade)
+  towerId   String?
+  tower     Tower?    @relation(fields: [towerId], references: [id], onDelete: SetNull)
+  name      String
+  /// lobby | terrace | parking | garden | clubhouse | gym | pool | stp | other
+  kind      String    @default("other")
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  assets    Asset[]
+  tickets   Ticket[]
+}
+
+/// Equipment that breaks and gets serviced: lifts, pumps, DG sets, fire panels.
+model Asset {
+  id             String      @id @default(cuid())
+  societyId      String
+  society        Society     @relation(fields: [societyId], references: [id], onDelete: Cascade)
+  towerId        String?
+  tower          Tower?      @relation(fields: [towerId], references: [id], onDelete: SetNull)
+  commonAreaId   String?
+  commonArea     CommonArea? @relation(fields: [commonAreaId], references: [id], onDelete: SetNull)
+  name           String
+  /// lift | water_pump | dg_set | fire_panel | cctv | other
+  kind           String      @default("other")
+  make           String?
+  serialNumber   String?
+  amcVendorId    String?
+  amcVendor      Vendor?     @relation(fields: [amcVendorId], references: [id], onDelete: SetNull)
+  amcExpiresOn   DateTime?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  deletedAt      DateTime?
+
+  tickets        Ticket[]
+}
+
+/// An invitation to join a society, sent to a phone number.
+model Invite {
+  id            String    @id @default(cuid())
+  societyId     String
+  society       Society   @relation(fields: [societyId], references: [id], onDelete: Cascade)
+  phone         String
+  name          String?
+  /// The membership role the invite grants.
+  role          String
+  /// For resident invites: the flat and how they occupy it.
+  flatId        String?
+  flat          Flat?     @relation(fields: [flatId], references: [id], onDelete: Cascade)
+  occupantType  String?
+  token         String    @unique
+  expiresAt     DateTime
+  acceptedAt    DateTime?
+  revokedAt     DateTime?
+  invitedById   String
+  createdAt     DateTime  @default(now())
+
+  @@index([societyId, phone])
+}
+
+model SocietyProfile {
+  id                 String   @id
+  societyId          String   @unique
+  society            Society  @relation(fields: [societyId], references: [id], onDelete: Cascade)
+  societyName        String
+  address            String
+  tagline            String
+  introText          String
+  maintenanceContact String
+  maintenancePhone   String
+  maintenanceEmail   String
+  highlights         String[]
+  lastUpdatedBy      String
+  updatedAt          DateTime @updatedAt
+}
+
 model Ticket {
   id                 String    @id
+  societyId          String
+  society            Society   @relation(fields: [societyId], references: [id], onDelete: Cascade)
+  /// Display copy of the flat number, or the location for a common-area ticket.
   flatNumber         String
   residentName       String
   residentPhone      String
@@ -35,21 +327,33 @@ model Ticket {
   residentFeedback   String?
   residentRating     Int?
 
+  /// Where the problem is: a flat, or a common area and optionally its asset.
+  flatId             String?
+  flat               Flat?       @relation(fields: [flatId], references: [id], onDelete: SetNull)
+  commonAreaId       String?
+  commonArea         CommonArea? @relation(fields: [commonAreaId], references: [id], onDelete: SetNull)
+  assetId            String?
+  asset              Asset?      @relation(fields: [assetId], references: [id], onDelete: SetNull)
+
+  /// The user who reported it.
   residentId         String?
-  resident           ResidentProfile? @relation(fields: [residentId], references: [id])
+  resident           User?     @relation(fields: [residentId], references: [id], onDelete: SetNull)
   vendorId           String?
-  vendor             Vendor?          @relation(fields: [vendorId], references: [id])
+  vendor             Vendor?   @relation(fields: [vendorId], references: [id])
 
   timeline           TimelineEvent[]
   notifications      NotificationLog[]
   agentLogs          AgentActivityLog[]
 
-  @@index([flatNumber])
-  @@index([status])
+  @@index([societyId, status])
+  @@index([flatId])
+  @@index([commonAreaId])
+  @@index([assetId])
   @@index([residentId])
   @@index([vendorId])
 }
 
+/// Scoped through its ticket rather than its own societyId.
 model TimelineEvent {
   id        String   @id @default(cuid())
   timestamp DateTime @default(now())
@@ -65,6 +369,8 @@ model TimelineEvent {
 
 model Vendor {
   id                String    @id
+  societyId         String
+  society           Society   @relation(fields: [societyId], references: [id], onDelete: Cascade)
   name              String
   category          String
   rating            Float
@@ -81,12 +387,15 @@ model Vendor {
   deletedAt         DateTime?
 
   tickets           Ticket[]
+  amcAssets         Asset[]
 
-  @@index([category])
+  @@index([societyId, category])
 }
 
 model NotificationLog {
   id            String   @id @default(cuid())
+  societyId     String
+  society       Society  @relation(fields: [societyId], references: [id], onDelete: Cascade)
   ticketId      String
   ticket        Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
   recipientType String
@@ -104,11 +413,14 @@ model NotificationLog {
   failureReason     String?
   deletedAt     DateTime?
 
+  @@index([societyId])
   @@index([ticketId])
 }
 
 model AgentActivityLog {
   id        String   @id @default(cuid())
+  societyId String
+  society   Society  @relation(fields: [societyId], references: [id], onDelete: Cascade)
   agentName String
   action    String
   details   String
@@ -117,53 +429,8 @@ model AgentActivityLog {
   ticket    Ticket?  @relation(fields: [ticketId], references: [id], onDelete: SetNull)
   deletedAt DateTime?
 
+  @@index([societyId])
   @@index([ticketId])
-}
-
-model SocietyProfile {
-  id                 String   @id
-  societyName        String
-  address            String
-  tagline            String
-  introText          String
-  maintenanceContact String
-  maintenancePhone   String
-  maintenanceEmail   String
-  highlights         String[]
-  lastUpdatedBy      String
-  updatedAt          DateTime @updatedAt
-}
-
-model ResidentProfile {
-  id             String   @id @default(cuid())
-  name           String
-  flatNumber     String
-  role           String
-  phone          String
-  email          String?
-  status         String   @default("active")
-  accessToken    String
-  tokensGenerated Int     @default(0)
-  lastActiveAt   DateTime?
-  createdAt      DateTime @default(now())
-  deletedAt      DateTime?
-
-  passwordHashes ResidentPassword[]
-
-  tickets        Ticket[]
-
-  @@unique([flatNumber, phone])
-  @@index([flatNumber])
-}
-
-model ResidentPassword {
-  id         String   @id @default(cuid())
-  residentId String
-  hash       String
-  createdAt  DateTime @default(now())
-  resident   ResidentProfile @relation(fields: [residentId], references: [id], onDelete: Cascade)
-
-  @@index([residentId])
 }
 
 /// One turn of a resident's conversation with the assistant.
@@ -171,10 +438,13 @@ model ResidentPassword {
 /// previously every /api/chat call was a standalone request with no history.
 model ChatMessage {
   id         String   @id @default(cuid())
+  societyId  String
+  society    Society  @relation(fields: [societyId], references: [id], onDelete: Cascade)
+  /// The user talking to the assistant.
   residentId String
   role       String
   text       String
   createdAt  DateTime @default(now())
 
-  @@index([residentId, createdAt])
+  @@index([societyId, residentId, createdAt])
 }

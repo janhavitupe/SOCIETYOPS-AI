@@ -108,7 +108,7 @@ function systemPrompt(actor: ToolActor): string {
     '',
     'You are currently acting for:',
     `  name: ${actor.name}`,
-    `  flat: ${actor.flatNumber}`,
+    `  flat: ${actor.flatNumber || 'none'}`,
     `  role: ${actor.role}`,
     '',
     'Rules you must follow:',

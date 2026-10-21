@@ -12,8 +12,10 @@ import path from 'path';
 import { logger, morganMiddleware } from './src/logger';
 import { requestId } from './src/requestContext';
 import { storageOrigin } from './src/services/storage';
-import authRoutes from './src/auth/authRoutes';
-import { authenticateToken } from './src/auth/authMiddleware';
+import { toNodeHandler } from 'better-auth/node';
+import { auth, allowedOrigins, CLIENT_IP_HEADER } from './src/auth/auth';
+import { authenticate } from './src/auth/authMiddleware';
+import accountRoutes from './src/routes/account';
 import { startJobs, stopJobs } from './src/services/jobs';
 import healthRoutes from './src/routes/health';
 import ticketRoutes from './src/routes/tickets';
@@ -23,6 +25,13 @@ import societyRoutes from './src/routes/society';
 import followupRoutes from './src/routes/followup';
 import chatRoutes from './src/routes/chat';
 import uploadRoutes from './src/routes/uploads';
+
+/** TRUST_PROXY as Express wants it: a hop count, true/false, or a list of addresses. */
+function trustProxySetting(value?: string): boolean | number | string {
+  if (!value) return false;
+  if (value === 'true' || value === 'false') return value === 'true';
+  return /^\d+$/.test(value) ? Number(value) : value;
+}
 
 /** The origin a Sentry DSN reports to, for the CSP. */
 function sentryOrigin(dsn?: string): string | null {
@@ -47,12 +56,12 @@ export async function createApp(
 ): Promise<express.Application> {
   const app = express();
 
+  // Behind a load balancer or proxy, set TRUST_PROXY (for example to 1, the
+  // number of hops) so req.ip is the client rather than the proxy.
+  app.set('trust proxy', trustProxySetting(process.env.TRUST_PROXY));
+
   // First, so everything after it (including CORS refusals) logs with the id.
   app.use(requestId);
-
-  const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000,http://localhost:5173')
-    .split(',')
-    .map((o) => o.trim());
 
   app.use(
     cors({
@@ -94,30 +103,30 @@ export async function createApp(
     skip: () => process.env.NODE_ENV === 'test',
   });
 
-  const authLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 5,
-    standardHeaders: true,
-    legacyHeaders: false,
-    message: { error: 'Too many authentication attempts, please try again later.' },
-    // Five login attempts per 15 minutes is far too few to test the auth flow.
-    skip: () => process.env.NODE_ENV === 'test',
-  });
-
   // Scoped to /api: mounted globally it also throttles the SPA's static assets
   // and HMR traffic, which exhausts the quota during a single page load.
   app.use('/api', generalLimiter);
-  // Photos go to object storage, not the JSON body, so a small limit suffices.
-  app.use(express.json({ limit: '100kb' }));
   app.use(morganMiddleware);
 
-  // Populates req.user for every API route. The per-route guards below decide
-  // what actually requires a session; this only decodes the token.
-  app.use('/api', authenticateToken);
+  // Sign-in, OTP, sessions and sign-out (src/auth/auth.ts). Before the JSON
+  // parser because Better Auth reads the body itself; it applies its own,
+  // tighter rate limits to the OTP and password endpoints.
+  app.all(
+    '/api/auth/*splat',
+    (req, _res, next) => {
+      req.headers[CLIENT_IP_HEADER] = req.ip || req.socket.remoteAddress || '';
+      next();
+    },
+    toNodeHandler(auth),
+  );
 
-  app.use('/api/auth/register', authLimiter);
-  app.use('/api/auth/login', authLimiter);
-  app.use('/api/auth', authRoutes);
+  // Photos go to object storage, not the JSON body, so a small limit suffices.
+  app.use(express.json({ limit: '100kb' }));
+
+  // Resolves the session into req.identity and req.user and scopes every
+  // query to the user's society. The per-route guards decide what needs what.
+  app.use('/api', authenticate);
+  app.use('/api', accountRoutes);
 
   // --- REST API ENDPOINTS ---
   //

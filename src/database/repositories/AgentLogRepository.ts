@@ -1,7 +1,7 @@
-import { PrismaClient } from '@prisma/client';
-
+import type { Db } from '../prisma';
+import { requireSocietyId } from '../../requestContext';
 export class AgentLogRepository {
-  constructor(private prisma: PrismaClient) {}
+  constructor(private prisma: Db) {}
 
   async findAll(): Promise<any[]> {
     return this.prisma.agentActivityLog.findMany({
@@ -12,7 +12,7 @@ export class AgentLogRepository {
 
   async create(data: { agentName: string; action: string; details: string; ticketId?: string }): Promise<any> {
     return this.prisma.agentActivityLog.create({
-      data,
+      data: { ...data, societyId: requireSocietyId() },
     });
   }
 

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import fs from 'fs/promises';
 import { agent, login, bearer, ACCOUNTS, deleteTickets, type Agent } from './helpers';
-import { prisma } from '../src/database/prisma';
+import { unscopedPrisma as prisma } from '../src/database/prisma';
 import { getStorage, LocalStorageDriver } from '../src/services/storage';
 
 let api: Agent;

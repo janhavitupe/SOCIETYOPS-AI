@@ -1,9 +1,9 @@
-import { PrismaClient } from '@prisma/client';
-
+import type { Db } from '../prisma';
+import { requireSocietyId } from '../../requestContext';
 export type ChatRole = 'user' | 'model';
 
 export class ChatMessageRepository {
-  constructor(private prisma: PrismaClient) {}
+  constructor(private prisma: Db) {}
 
   /**
    * The most recent turns for a resident, oldest first so the result can be
@@ -20,7 +20,7 @@ export class ChatMessageRepository {
   }
 
   async append(residentId: string, role: ChatRole, text: string): Promise<void> {
-    await this.prisma.chatMessage.create({ data: { residentId, role, text } });
+    await this.prisma.chatMessage.create({ data: { societyId: requireSocietyId(), residentId, role, text } });
   }
 
   async clear(residentId: string): Promise<number> {

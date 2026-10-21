@@ -1,18 +1,24 @@
+import type { AuthContextType } from '@/context/AuthContext';
+
 /**
- * Roles as the frontend routes them. 'worker' and 'platform_admin' have
- * screens reserved for them but no accounts until Phases 1 and 2.
+ * Society roles as the frontend routes them; they match src/auth/actor.ts.
+ * 'worker' has a screen reserved for it but no accounts until Phase 2.
  */
-export type Role = 'resident' | 'maintenance' | 'admin' | 'worker' | 'platform_admin';
+export type Role = 'society_admin' | 'manager' | 'committee' | 'resident' | 'worker';
 
-export const MANAGER_ROLES: Role[] = ['maintenance', 'admin'];
+export const MANAGER_ROLES: Role[] = ['society_admin', 'manager'];
 
-export const isManagerRole = (role?: string): boolean => MANAGER_ROLES.includes(role as Role);
+export const isManagerRole = (role?: string | null): boolean => MANAGER_ROLES.includes(role as Role);
 
-/** Where a user lands after signing in, and where a wrong-role URL sends them. */
-export function homeFor(role?: string): string {
+type Session = Pick<AuthContextType, 'user' | 'hasSociety'>;
+
+/** Where someone lands after signing in, and where a wrong-role URL sends them. */
+export function homeFor(auth: Session): string {
+  if (auth.user?.platformRole === 'platform_admin' && !auth.hasSociety) return '/platform';
+  if (!auth.user?.name || !auth.hasSociety) return '/welcome';
+  const role = auth.user.role;
   if (isManagerRole(role)) return '/manager';
   if (role === 'worker') return '/worker';
-  if (role === 'platform_admin') return '/platform';
   return '/resident';
 }
 

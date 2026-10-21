@@ -1,6 +1,7 @@
 import React from 'react';
 import { MessageSquare, LayoutDashboard, ShieldCheck, Zap, Bell, Sun, Moon, Users } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { isManagerRole } from '../app/roles';
 
 interface NavigationHeaderProps {
   activeTab: 'resident' | 'manager' | 'vendors';
@@ -68,7 +69,7 @@ export const NavigationHeader: React.FC<NavigationHeaderProps> = ({
               <span>Resident Chat</span>
             </button>
 
-            {role !== 'resident' && (
+            {isManagerRole(role) && (
               <>
                 <button
                   onClick={() => setActiveTab('manager')}

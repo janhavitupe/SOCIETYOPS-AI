@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { agent, login, bearer, ACCOUNTS, deleteTickets, type Agent } from './helpers';
-import { prisma } from '../src/database/prisma';
+import { unscopedPrisma as prisma } from '../src/database/prisma';
 
 let api: Agent;
 let residentToken: string;

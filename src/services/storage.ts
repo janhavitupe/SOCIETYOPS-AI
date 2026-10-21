@@ -3,7 +3,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { S3Client, PutObjectCommand, GetObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { JWT_SECRET } from '../auth/authUtils';
+import { SERVER_SECRET } from '../auth/secret';
 import { logger } from '../logger';
 
 /**
@@ -105,7 +105,7 @@ export class S3StorageDriver implements StorageDriver {
 
 /** Signs local-driver URLs. Separate from the JWT key by derivation, not by configuration. */
 function localSignature(op: 'get' | 'put', key: string, expires: number, extra = ''): string {
-  const secret = process.env.STORAGE_SIGNING_SECRET || `${JWT_SECRET}:storage`;
+  const secret = process.env.STORAGE_SIGNING_SECRET || `${SERVER_SECRET}:storage`;
   return crypto.createHmac('sha256', secret).update(`${op}\n${key}\n${expires}\n${extra}`).digest('base64url');
 }
 

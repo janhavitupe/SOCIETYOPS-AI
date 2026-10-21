@@ -1,12 +1,12 @@
-import { Router, Request, Response } from 'express';
+import { Router } from 'express';
 import { logger } from '../logger';
-import { societyProfileRepo, residentProfileRepo } from '../database/repositories';
-import { requireAuth, requireManager, requireAdmin } from '../auth/authMiddleware';
-import { validateBody, validateParams } from './validate';
-import { idParams, societyProfileBody, type IdParams } from './schemas';
+import { societyProfileRepo, memberRepo } from '../database/repositories';
+import { requireAuth, requireManager } from '../auth/authMiddleware';
+import { validateBody } from './validate';
+import { societyProfileBody } from './schemas';
 
 /**
- * Society configuration and resident administration.
+ * Society configuration and the member directory.
  */
 const router = Router();
 
@@ -24,31 +24,13 @@ router.post('/society-profile', requireManager, validateBody(societyProfileBody)
   res.json(profile);
 });
 
+// Members of the current society with their roles and flats. Kept at this
+// path because the manager dashboard reads it; it used to list
+// ResidentProfile rows, which were replaced by users and memberships.
 router.get('/resident-profiles', requireManager, async (req, res) => {
-  const residents = await residentProfileRepo.findAll();
-
-  // accessToken is a standing credential for the account; it must never leave
-  // the server in a list response.
-  const safe = residents.map(({ accessToken, ...rest }) => rest);
-
-  logger.info('Resident profiles listed', { count: safe.length });
-  res.json({ count: safe.length, residents: safe });
+  const residents = await memberRepo.directory();
+  logger.info('Member directory listed', { count: residents.length });
+  res.json({ count: residents.length, residents });
 });
-
-// Issues a new standing access token, so this is admin-only.
-router.post(
-  '/resident-profiles/:id/token',
-  requireAdmin,
-  validateParams(idParams),
-  async (req: Request<IdParams>, res: Response) => {
-    const updated = await residentProfileRepo.issueAccessToken(req.params.id);
-    if (!updated) {
-      logger.warn('Token issuance failed - resident not found', { residentId: req.params.id });
-      return res.status(404).json({ error: 'Resident profile not found' });
-    }
-    logger.info('Access token issued', { residentId: req.params.id });
-    res.json(updated);
-  },
-);
 
 export default router;

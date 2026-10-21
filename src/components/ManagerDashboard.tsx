@@ -120,15 +120,6 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
     }
   };
 
-  const handleIssueToken = async (profileId: string) => {
-    try {
-      await api(`/api/resident-profiles/${profileId}/token`, { method: 'POST' });
-      await onRefresh();
-    } catch (err) {
-      console.error('Failed to issue token:', err);
-    }
-  };
-
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
       {/* Top Banner & Control Header */}
@@ -147,7 +138,7 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
         <div className="flex items-center space-x-3">
           <div className="text-right hidden sm:block mr-2">
             <div className="text-[10px] uppercase tracking-wider text-[#888888] font-bold">Active Society</div>
-            <div className="text-sm font-bold text-[#1A1A1A] dark:text-white">Shree Ram Enclave RWA</div>
+            <div className="text-sm font-bold text-[#1A1A1A] dark:text-white">{societyProfile?.societyName}</div>
           </div>
           <button
             onClick={onRefresh}
@@ -213,7 +204,7 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
             <div className="flex items-center space-x-2 text-[#6366F1] font-bold text-[10px] uppercase tracking-wider">
               <KeyRound className="w-3.5 h-3.5" /> Admin access overview
             </div>
-            <div className="text-sm text-[#1A1A1A] dark:text-white">{societyProfile?.address || 'Powai, Mumbai'}</div>
+            <div className="text-sm text-[#1A1A1A] dark:text-white">{societyProfile?.address}</div>
             <div className="text-xs text-[#71716A] dark:text-slate-400">
               {societyProfile?.maintenancePhone || '+91 98765 11111'} •{' '}
               {societyProfile?.maintenanceEmail || 'maintenance@srerwa.org'}
@@ -279,21 +270,19 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
         </div>
       </div>
 
-      {/* Resident Access & Admin Token Panel */}
+      {/* Member directory */}
       <div
         className={`rounded-lg border p-4 ${isDarkMode ? 'bg-[#181817] border-[#2D2D2A]' : 'bg-white border-[#E5E5E1] shadow-2xs'}`}
       >
         <div className="flex items-center justify-between mb-3">
           <div>
             <div className="flex items-center space-x-2 text-[#6366F1] font-bold text-[10px] uppercase tracking-wider">
-              <Users2 className="w-3.5 h-3.5" /> Residents & access tokens
+              <Users2 className="w-3.5 h-3.5" /> Members
             </div>
-            <h3 className="text-lg font-semibold text-[#1A1A1A] dark:text-white mt-1">
-              Resident profiles and token registry
-            </h3>
+            <h3 className="text-lg font-semibold text-[#1A1A1A] dark:text-white mt-1">Residents and staff</h3>
           </div>
           <div className="text-right text-[10px] uppercase tracking-wider text-[#888888]">
-            <div>Active residents</div>
+            <div>Members</div>
             <div className="text-base font-semibold text-[#1A1A1A] dark:text-white">{residentProfiles.length}</div>
           </div>
         </div>
@@ -307,27 +296,18 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
                 <th className="p-2">Name</th>
                 <th className="p-2">Flat</th>
                 <th className="p-2">Role</th>
-                <th className="p-2">Token</th>
-                <th className="p-2">Generated</th>
-                <th className="p-2">Action</th>
+                <th className="p-2">Phone</th>
+                <th className="p-2">Status</th>
               </tr>
             </thead>
             <tbody>
               {residentProfiles.map((profile) => (
                 <tr key={profile.id} className="border-b border-[#F0F0EE] dark:border-[#222220]">
                   <td className="p-2 font-semibold text-[#1A1A1A] dark:text-white">{profile.name}</td>
-                  <td className="p-2">{profile.flatNumber}</td>
-                  <td className="p-2 capitalize">{profile.role}</td>
-                  <td className="p-2 font-mono text-[#6366F1]">{profile.accessToken}</td>
-                  <td className="p-2">{profile.tokensGenerated}</td>
-                  <td className="p-2">
-                    <button
-                      onClick={() => handleIssueToken(profile.id)}
-                      className="px-2 py-1 rounded bg-[#F0F0EE] dark:bg-[#222220] text-[#1A1A1A] dark:text-slate-200 text-[10px] font-bold uppercase tracking-wider"
-                    >
-                      Issue New
-                    </button>
-                  </td>
+                  <td className="p-2">{profile.flatNumber || '—'}</td>
+                  <td className="p-2 capitalize">{profile.role.replace('_', ' ')}</td>
+                  <td className="p-2 font-mono">{profile.phone || '—'}</td>
+                  <td className="p-2 capitalize">{profile.status}</td>
                 </tr>
               ))}
             </tbody>

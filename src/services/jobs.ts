@@ -1,6 +1,8 @@
 import { PgBoss } from 'pg-boss';
 import { logger } from '../logger';
 import { runFollowupCycle } from './followup';
+import { unscopedPrisma } from '../database/prisma';
+import { withSociety } from '../requestContext';
 
 /**
  * Background jobs, on pg-boss so they live in the existing PostgreSQL.
@@ -36,16 +38,7 @@ export async function startJobs(): Promise<void> {
 
   await boss.createQueue(QUEUES.followupCycle, { policy: 'singleton', retryLimit: 0, expireInSeconds: 600 });
 
-  await boss.work(QUEUES.followupCycle, async () => {
-    const result = await runFollowupCycle();
-    logger.info('Follow-up agent cycle executed', {
-      checkedCount: result.checkedCount,
-      escalatedTickets: result.escalatedTickets.length,
-      remindersSent: result.remindersSent,
-      dispatched: result.dispatched,
-      trigger: 'schedule',
-    });
-  });
+  await boss.work(QUEUES.followupCycle, runFollowupForAllSocieties);
 
   const cron = followupCron();
   if (cron) {
@@ -55,6 +48,34 @@ export async function startJobs(): Promise<void> {
     // The schedule is stored in the database, so turning it off has to remove it.
     await boss.unschedule(QUEUES.followupCycle);
     logger.info('Follow-up cycle schedule disabled');
+  }
+}
+
+/**
+ * One follow-up pass per society, each inside that society's tenant scope so
+ * it only sees, dispatches and escalates that society's tickets. A failure in
+ * one society is logged and does not stop the others.
+ */
+export async function runFollowupForAllSocieties(): Promise<void> {
+  const societies = await unscopedPrisma.society.findMany({
+    where: { status: { not: 'suspended' } },
+    select: { id: true },
+  });
+
+  for (const { id } of societies) {
+    try {
+      const result = await withSociety(id, () => runFollowupCycle());
+      logger.info('Follow-up agent cycle executed', {
+        societyId: id,
+        checkedCount: result.checkedCount,
+        escalatedTickets: result.escalatedTickets.length,
+        remindersSent: result.remindersSent,
+        dispatched: result.dispatched,
+        trigger: 'schedule',
+      });
+    } catch (err) {
+      logger.error('Follow-up cycle failed for a society', { societyId: id, error: (err as Error).message });
+    }
   }
 }
 

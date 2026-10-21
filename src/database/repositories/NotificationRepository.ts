@@ -1,5 +1,5 @@
-import { PrismaClient } from '@prisma/client';
-
+import type { Db } from '../prisma';
+import { requireSocietyId } from '../../requestContext';
 export interface NotificationData {
   ticketId: string;
   recipientType: string;
@@ -15,7 +15,7 @@ export interface NotificationData {
 }
 
 export class NotificationRepository {
-  constructor(private prisma: PrismaClient) {}
+  constructor(private prisma: Db) {}
 
   async findAll(): Promise<any[]> {
     return this.prisma.notificationLog.findMany({
@@ -28,6 +28,7 @@ export class NotificationRepository {
     return this.prisma.notificationLog.create({
       data: {
         ...data,
+        societyId: requireSocietyId(),
         channel: data.channel || 'WhatsApp',
         language: data.language || 'Hinglish',
         // Defaults to Simulated rather than Sent: without a dispatch result

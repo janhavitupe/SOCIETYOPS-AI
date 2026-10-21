@@ -3,8 +3,8 @@ import { sendNotification } from '../services/notifications';
 import type { ChatCompletionTool } from 'openai/resources/chat/completions';
 import { IssueCategory, UrgencyLevel, TicketStatus } from '../types';
 import { buildDailyReport } from '../services/analytics';
-import { JwtPayload } from '../auth/authUtils';
-import { canAccessAllTickets, canAccessFlat } from '../auth/authMiddleware';
+import { canActOnTicket, canSeeTicket, isManager as isManagerActor, isStaff, type Actor } from '../auth/actor';
+import { resolveTicketLocation } from '../services/ticketLocation';
 import { closeRefusal, escalateRefusal } from '../services/ticketRules';
 
 const str = (description: string) => ({ type: 'string' as const, description });
@@ -203,34 +203,43 @@ export const maintenanceToolDeclarations: ChatCompletionTool[] = [
  * the repository layer with full privileges, bypassing the route guards that
  * protect the equivalent REST endpoints.
  */
-export type ToolActor = JwtPayload;
+export type ToolActor = Actor;
 
 type ToolResult = Record<string, unknown>;
 
 const denied = (error: string): ToolResult => ({ success: false, error });
 
-/** Resolves a ticket only when the actor is entitled to it. */
-async function ticketForActor(ticketId: string, actor: ToolActor) {
+/**
+ * Resolves a ticket only when the actor is entitled to it: to read it, or to
+ * act on it as its resident. Tickets of other societies are never found at
+ * all, because the tenant scope filters them out.
+ */
+async function ticketForActor(ticketId: string, actor: ToolActor, purpose: 'read' | 'act' = 'act') {
   if (!ticketId) return { error: 'A ticket id is required', ticket: null as any };
   const ticket = await ticketRepo.findById(ticketId);
   if (!ticket) return { error: 'Ticket not found', ticket: null as any };
-  if (!canAccessFlat(actor, ticket.flatNumber)) {
+  const allowed = purpose === 'read' ? canSeeTicket(actor, ticket) : canActOnTicket(actor, ticket);
+  if (!allowed) {
     return { error: 'You do not have access to that ticket', ticket: null as any };
   }
   return { error: null as string | null, ticket };
 }
 
 export async function executeToolCall(name: string, args: any, actor: ToolActor): Promise<ToolResult> {
-  const isManager = canAccessAllTickets(actor);
+  const isManager = isManagerActor(actor);
 
   switch (name) {
     case 'create_ticket': {
-      // Identity comes from the session. A resident is pinned to their own flat
-      // whatever the model was persuaded to pass.
+      // Identity comes from the session. A resident is pinned to a flat they
+      // occupy whatever the model was persuaded to pass.
+      const location = await resolveTicketLocation(actor, { flatNumber: args.flatNumber });
+      if ('error' in location) return denied(location.error);
+
       const ticket = await ticketRepo.create({
-        flatNumber: isManager ? args.flatNumber || actor.flatNumber : actor.flatNumber,
+        flatId: location.flatId,
+        flatNumber: location.flatNumber,
         residentName: isManager ? args.residentName || actor.name : actor.name,
-        residentPhone: args.residentPhone || '+91 98000 00000',
+        residentPhone: isManager ? args.residentPhone : (actor.phone ?? undefined),
         issueCategory: (args.issueCategory as IssueCategory) || 'General Repairs',
         description: args.description,
         urgency: (args.urgency as UrgencyLevel) || 'Medium',
@@ -268,7 +277,7 @@ export async function executeToolCall(name: string, args: any, actor: ToolActor)
     }
 
     case 'get_ticket': {
-      const { error, ticket } = await ticketForActor(args.ticketId, actor);
+      const { error, ticket } = await ticketForActor(args.ticketId, actor, 'read');
       if (error) return denied(error);
       return { success: true, ticket };
     }
@@ -279,7 +288,7 @@ export async function executeToolCall(name: string, args: any, actor: ToolActor)
         args.category,
         args.urgency,
         args.status,
-        isManager ? undefined : actor.flatNumber,
+        isStaff(actor) ? undefined : { flatIds: actor.flats.map((f) => f.id), residentId: actor.id },
       );
       return { success: true, count: tickets.length, tickets };
     }

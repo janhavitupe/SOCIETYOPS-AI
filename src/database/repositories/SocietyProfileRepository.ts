@@ -1,7 +1,9 @@
-import { Prisma, PrismaClient } from '@prisma/client';
+import crypto from 'crypto';
+import type { Db } from '../prisma';
+import { Prisma } from '@prisma/client';
 
 export class SocietyProfileRepository {
-  constructor(private prisma: PrismaClient) {}
+  constructor(private prisma: Db) {}
 
   async find(): Promise<any | null> {
     const profile = await this.prisma.societyProfile.findFirst();
@@ -9,11 +11,11 @@ export class SocietyProfileRepository {
   }
 
   /** Callers pass only validated, whitelisted fields (routes/schemas). */
-  async update(updates: Prisma.SocietyProfileUpdateInput): Promise<any> {
+  async update(updates: Prisma.SocietyProfileUncheckedUpdateInput): Promise<any> {
     const existing = await this.prisma.societyProfile.findFirst();
     if (!existing) {
-      const blank: Prisma.SocietyProfileCreateInput = {
-        id: 'society-main',
+      const blank: Omit<Prisma.SocietyProfileUncheckedCreateInput, 'societyId'> = {
+        id: crypto.randomUUID(),
         societyName: '',
         address: '',
         tagline: '',
@@ -25,7 +27,8 @@ export class SocietyProfileRepository {
         lastUpdatedBy: '',
       };
       return this.prisma.societyProfile.create({
-        data: { ...blank, ...(updates as Partial<Prisma.SocietyProfileCreateInput>) },
+        // societyId is added by the tenant scope.
+        data: { ...blank, ...(updates as object) } as Prisma.SocietyProfileUncheckedCreateInput,
       });
     }
     return this.prisma.societyProfile.update({ where: { id: existing.id }, data: updates });

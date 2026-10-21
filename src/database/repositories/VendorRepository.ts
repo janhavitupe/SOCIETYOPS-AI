@@ -1,4 +1,5 @@
-import { PrismaClient, Vendor as PrismaVendor } from '@prisma/client';
+import type { Db } from '../prisma';
+import { Vendor as PrismaVendor } from '@prisma/client';
 
 /**
  * How much each live job discounts a vendor's rating when choosing between
@@ -8,7 +9,7 @@ import { PrismaClient, Vendor as PrismaVendor } from '@prisma/client';
 const LOAD_PENALTY = 0.3;
 
 export class VendorRepository {
-  constructor(private prisma: PrismaClient) {}
+  constructor(private prisma: Db) {}
 
   async findAll(): Promise<any[]> {
     return this.prisma.vendor.findMany({

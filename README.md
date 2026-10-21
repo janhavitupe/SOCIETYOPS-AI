@@ -10,7 +10,8 @@ AI-powered maintenance coordination for Indian housing societies and RWAs.
 - **Database**: PostgreSQL 16 via Prisma 7 ORM
 - **Background jobs**: pg-boss (runs on the same PostgreSQL)
 - **Photos**: S3-compatible object storage with signed URLs (local disk in development)
-- **Security**: Helmet, CORS whitelist, rate limiting
+- **Auth**: Better Auth: phone + password or one-time code, database sessions in httpOnly cookies
+- **Security**: Helmet, CORS whitelist, rate limiting, per-society query scoping
 - **Observability**: Winston (JSON in production) with a request id on every line, Sentry
 
 ## Quick Start
@@ -82,7 +83,9 @@ The app will be available at `http://localhost:3000`.
 | Variable                    | Required       | Default                                                                          | Description                                                                                                                                                          |
 | --------------------------- | -------------- | -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `DATABASE_URL`              | Yes            | `postgresql://societyops:societyops_dev@localhost:5432/societyops?schema=public` | PostgreSQL connection string                                                                                                                                         |
-| `JWT_SECRET`                | Yes (prod)     | `dev-secret-change-me-in-production-and-keep-it-long-at-least-32-chars`          | JWT signing secret                                                                                                                                                   |
+| `BETTER_AUTH_SECRET`        | Yes (prod)     | development fallback                                                             | Signs sessions and photo links. `JWT_SECRET` is read if it is unset.                                                                                                 |
+| `BETTER_AUTH_URL`           | Yes (prod)     | `http://localhost:3000`                                                          | The app's public address.                                                                                                                                            |
+| `TRUST_PROXY`               | Behind a proxy | -                                                                                | Proxy hop count (usually `1`) so rate limits see client addresses.                                                                                                   |
 | `GROQ_API_KEY`              | No             | -                                                                                | Groq API key for AI chat. Without one every reply comes from the deterministic fallback engine; `/api/chat` reports `source` so you can tell which answered.         |
 | `GROQ_MODEL`                | No             | `qwen/qwen3.8-27b`                                                               | Chat model. This is the only Groq model that accepts images, so a text-only model will reject messages carrying a photo.                                             |
 | `TWILIO_ACCOUNT_SID`        | No             | -                                                                                | Set all three Twilio values to deliver notifications for real. Without them messages are recorded with status `Simulated`, never `Sent`.                             |
@@ -168,7 +171,7 @@ For Windows, use Task Scheduler to run `powershell -File scripts\backup.ps1` dai
 4. Run `npm run prisma:seed` only on fresh databases, not on every deploy.
 5. Enable automated backups on the provider (daily snapshots, 7-30 day retention).
 6. Set `NODE_ENV=production` in the server environment.
-7. Ensure `JWT_SECRET` is a strong random string (not the dev fallback).
+7. Ensure `BETTER_AUTH_SECRET` is a strong random string (not the dev fallback), and set `BETTER_AUTH_URL` and, behind a load balancer, `TRUST_PROXY`.
 
 ### Build for production
 
@@ -184,7 +187,7 @@ npm run start
 The `Dockerfile` builds in two stages and ships only production dependencies. On start the container runs `prisma migrate deploy` and then the server.
 
 ```bash
-cp .env.example .env.production   # fill in JWT_SECRET, S3_*, GROQ_API_KEY ...
+cp .env.example .env.production   # fill in BETTER_AUTH_SECRET, BETTER_AUTH_URL, S3_*, GROQ_API_KEY ...
 $env:POSTGRES_PASSWORD = "a-strong-password"   # PowerShell; use export on Linux
 docker compose -f docker-compose.prod.yml up -d --build
 ```
@@ -210,12 +213,24 @@ Every table includes `createdAt`, `updatedAt`, and `deletedAt` for soft deletes 
 
 ## Demo Accounts
 
-| Flat               | Name               | Password    | Role        |
-| ------------------ | ------------------ | ----------- | ----------- |
-| B-402              | Vikram Mehta       | `vikram123` | Resident    |
-| A-101              | Mrs. Ananya Sharma | `ananya123` | Resident    |
-| Maintenance Office | Mr. Arvind Sharma  | `arvind123` | Maintenance |
-| Admin              | Admin Desk         | `admin123`  | Admin       |
+`npm run prisma:seed` creates two societies, so tenant isolation can be seen. Sign in with the mobile number and password, or with a one-time code (in development the code is printed in the server log).
+
+| Society                | Name                       | Mobile      | Password    | Role          |
+| ---------------------- | -------------------------- | ----------- | ----------- | ------------- |
+| Shree Ram Enclave      | Vikram Mehta (B-402)       | 98210 99887 | `vikram123` | Resident      |
+| Shree Ram Enclave      | Mrs. Ananya Sharma (A-101) | 99870 11223 | `ananya123` | Resident      |
+| Shree Ram Enclave      | Mr. Arvind Sharma          | 98765 11111 | `arvind123` | Manager       |
+| Shree Ram Enclave      | Admin Desk                 | 98000 00000 | `admin123`  | Society admin |
+| Green Valley Residency | Priya Nair                 | 99000 11111 | `priya123`  | Manager       |
+| Green Valley Residency | Rohan Desai (G-201)        | 99000 22222 | `rohan123`  | Resident      |
+
+The seed refuses to run over existing data. `SEED_RESET=true npm run prisma:seed` (PowerShell: `$env:SEED_RESET="true"; npm run prisma:seed`) empties every application table first; never run that against production.
+
+## Multi-society model
+
+Every society's data carries a `societyId`, and `src/database/prisma.ts` adds the signed-in user's society to every query on those tables. A query with no society in context is refused rather than run unscoped. `tests/tenancy.test.ts` checks that nothing in one society can be read or changed from another, and fails when a new API route has no such test.
+
+People sign in once (`User`, managed by Better Auth) and hold roles per society (`Membership`: `society_admin`, `manager`, `committee`, `resident`). Which flats they live in is `FlatOccupant`.
 
 ## API Endpoints
 

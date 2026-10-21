@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { ChatMessage, Ticket } from '../types';
 import { api, ApiError } from '../lib/api';
+import { useAuth } from '../context/AuthContext';
 import { uploadPhoto, photoProblem } from '../lib/uploads';
 
 interface ResidentChatProps {
@@ -25,7 +26,7 @@ interface ResidentChatProps {
 const PRESET_HINGLISH_PROMPTS = [
   {
     label: 'Flush Leakage',
-    text: 'Bhaiya B-402 mein master bathroom ka flush pipe leak ho raha h, paani floor par bhar gaya h urgent please!',
+    text: 'Bhaiya master bathroom ka flush pipe leak ho raha h, paani floor par bhar gaya h urgent please!',
   },
   {
     label: 'Lift Stuck Emergency',
@@ -52,8 +53,10 @@ export const ResidentChat: React.FC<ResidentChatProps> = ({ onTicketSelect, isDa
   ]);
 
   const [inputMessage, setInputMessage] = useState('');
-  const [selectedFlat, setSelectedFlat] = useState('B-402');
-  const [residentName, setResidentName] = useState('Vikram Mehta');
+  // Who is talking comes from the session; the server ignores any other claim.
+  const { user } = useAuth();
+  const residentName = user?.name ?? '';
+  const selectedFlat = user?.flatNumber || 'No flat';
   const [isLoading, setIsLoading] = useState(false);
   // The file is uploaded on send; preview is an object URL for display only.
   const [attachedImage, setAttachedImage] = useState<{ file: File; preview: string } | null>(null);
@@ -226,25 +229,13 @@ export const ResidentChat: React.FC<ResidentChatProps> = ({ onTicketSelect, isDa
           </div>
         </div>
 
-        {/* Resident Identity Picker */}
+        {/* Who is reporting. It used to be a picker that pretended to switch
+            residents; the server always takes identity from the session. */}
         <div className="flex items-center space-x-2 text-xs">
-          <span className="text-[#888888] font-bold text-[10px] uppercase tracking-wider">Unit & Resident:</span>
-          <select
-            value={`${residentName}|${selectedFlat}`}
-            onChange={(e) => {
-              const [rName, rFlat] = e.target.value.split('|');
-              setResidentName(rName);
-              setSelectedFlat(rFlat);
-            }}
-            className={`px-2.5 py-1 rounded border text-xs font-bold outline-none transition-colors ${
-              isDarkMode ? 'bg-[#222220] border-[#2D2D2A] text-white' : 'bg-[#FAFAF9] border-[#E5E5E1] text-[#1A1A1A]'
-            }`}
-          >
-            <option value="Vikram Mehta|B-402">Vikram Mehta (Block B-402)</option>
-            <option value="Mrs. Ananya Sharma|A-101">Ananya Sharma (Block A-101)</option>
-            <option value="Sanjay Kapoor|A-305">Sanjay Kapoor (Block A-305)</option>
-            <option value="Security Guard Rakesh|Tower B">Security Guard Rakesh (Tower B)</option>
-          </select>
+          <span className="text-[#888888] font-bold text-[10px] uppercase tracking-wider">Reporting as:</span>
+          <span className="font-bold text-[#1A1A1A] dark:text-white">
+            {residentName} ({selectedFlat})
+          </span>
         </div>
       </div>
 

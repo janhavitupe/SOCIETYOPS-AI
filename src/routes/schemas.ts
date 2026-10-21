@@ -35,20 +35,17 @@ const phone = z.string().transform((raw, ctx) => {
 /** Storage keys from POST /api/uploads; ownership is checked in the route. */
 const imageRefs = z.array(z.string().max(200)).max(4);
 
-// --- Auth ---
+// --- Account ---
 
-export const registerBody = z.object({
-  name: text(100),
-  flatNumber: text(30),
-  phone,
-  password: z.string().min(8, 'Password must be at least 8 characters').max(128),
-});
+export const updateAccountBody = z
+  .object({
+    name: text(100).optional(),
+    email: z.string().trim().toLowerCase().email().max(200).optional(),
+    password: z.string().min(8, 'Password must be at least 8 characters').max(128).optional(),
+  })
+  .refine((b) => Object.values(b).some((v) => v !== undefined), { message: 'Nothing to update' });
 
-export const loginBody = z.object({
-  flatNumber: text(30),
-  phone,
-  password: z.string().min(1).max(128),
-});
+export const activeSocietyBody = z.object({ societyId: text(64) });
 
 // --- Tickets ---
 
@@ -69,7 +66,8 @@ export const createTicketBody = z.object({
   issueCategory: z.enum(ISSUE_CATEGORIES),
   description: text(2000),
   urgency: z.enum(URGENCIES).default('Medium'),
-  flatNumber: text(30).optional(),
+  flatId: text(64).optional(),
+  flatNumber: text(60).optional(),
   residentName: text(100).optional(),
   residentPhone: phone.optional(),
   images: imageRefs.default([]),

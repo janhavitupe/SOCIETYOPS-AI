@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { executeToolCall, type ToolActor } from '../src/tools/maintenanceTools';
 import { ticketRepo } from '../src/database/repositories';
-import { deleteTickets } from './helpers';
-import { prisma } from '../src/database/prisma';
+import { actorFor, deleteTickets, SOCIETIES } from './helpers';
+import { unscopedPrisma } from '../src/database/prisma';
+import { setTestSociety } from '../src/requestContext';
 
 /**
  * These exercise the authorisation the agent runs under.
@@ -13,19 +14,9 @@ import { prisma } from '../src/database/prisma';
  * and these are the checks that stop it.
  */
 
-const resident: ToolActor = {
-  id: 'RES-001',
-  name: 'Vikram Mehta',
-  flatNumber: 'B-402',
-  role: 'resident',
-};
-
-const manager: ToolActor = {
-  id: 'RES-003',
-  name: 'Mr. Arvind Sharma',
-  flatNumber: 'Maintenance Office',
-  role: 'maintenance',
-};
+// Resolved from the seed the same way a request resolves its session.
+let resident: ToolActor;
+let manager: ToolActor;
 
 const created: string[] = [];
 let foreignTicketId: string;
@@ -37,6 +28,10 @@ async function makeTicket(actor: ToolActor, args: Record<string, unknown>) {
 }
 
 beforeAll(async () => {
+  // The tools run outside a request here, so give them Shree Ram's scope.
+  setTestSociety(SOCIETIES.shreeRam);
+  resident = await actorFor('RES-001');
+  manager = await actorFor('RES-003');
   const foreign = await makeTicket(manager, {
     flatNumber: 'A-305',
     issueCategory: 'Electrical',
@@ -50,7 +45,8 @@ afterAll(async () => {
   if (created.length) {
     await deleteTickets(created);
   }
-  await prisma.$disconnect();
+  setTestSociety(undefined);
+  await unscopedPrisma.$disconnect();
 });
 
 describe('create_ticket', () => {

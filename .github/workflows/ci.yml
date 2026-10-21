@@ -29,7 +29,7 @@ jobs:
 
     env:
       DATABASE_URL: postgresql://societyops:societyops_dev@localhost:5432/societyops?schema=public
-      JWT_SECRET: ci-only-secret-never-used-outside-this-runner-at-least-32-chars
+      BETTER_AUTH_SECRET: ci-only-secret-never-used-outside-this-runner-at-least-32-chars
       NODE_OPTIONS: --max-old-space-size=4096
 
     steps:
@@ -85,7 +85,7 @@ jobs:
           until docker exec db pg_isready -U societyops -d societyops; do sleep 1; done
           docker run -d --name app --network ci -p 3000:3000 \
             -e DATABASE_URL=postgresql://societyops:ci@db:5432/societyops?schema=public \
-            -e JWT_SECRET=ci-only-secret-never-used-outside-this-runner-at-least-32-chars \
+            -e BETTER_AUTH_SECRET=ci-only-secret-never-used-outside-this-runner-at-least-32-chars \
             societyops-ai:ci
 
       - name: Health check

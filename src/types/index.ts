@@ -128,17 +128,16 @@ export interface SocietyProfile {
   updatedAt: string;
 }
 
+/** A member of the society, as GET /api/resident-profiles lists them. */
 export interface ResidentProfile {
   id: string;
   name: string;
+  phone: string | null;
+  roles: string[];
+  role: 'society_admin' | 'manager' | 'committee' | 'resident';
+  flats: string[];
   flatNumber: string;
-  role: 'resident' | 'maintenance' | 'admin';
-  phone: string;
-  email?: string;
-  status: 'active' | 'pending';
-  accessToken: string;
-  tokensGenerated: number;
-  lastActiveAt?: string;
+  status: 'invited' | 'pending' | 'active';
   createdAt: string;
 }
 

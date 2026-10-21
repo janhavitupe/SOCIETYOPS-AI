@@ -1,8 +1,11 @@
-import { PrismaClient, Ticket as PrismaTicket } from '@prisma/client';
+import type { Db } from '../prisma';
+import { requireSocietyId } from '../../requestContext';
+import { Ticket as PrismaTicket } from '@prisma/client';
 import { slaDueAt } from '../../services/sla';
 import { resolveImageUrls } from '../../services/storage';
 
 export interface TicketData {
+  /** Display copy of the flat number, or a description of the place. */
   flatNumber: string;
   residentName: string;
   residentPhone?: string;
@@ -12,6 +15,18 @@ export interface TicketData {
   images?: string[];
   residentId?: string;
   vendorId?: string;
+  flatId?: string | null;
+  commonAreaId?: string | null;
+  assetId?: string | null;
+}
+
+/**
+ * Restricts a ticket search to what one resident may see: tickets for the
+ * flats they occupy, and tickets they reported themselves.
+ */
+export interface ResidentScope {
+  flatIds: string[];
+  residentId: string;
 }
 
 /** Timeline events oldest first; Postgres returns them in no fixed order otherwise. */
@@ -40,7 +55,7 @@ async function toTicket(t: PrismaTicket & { timeline: TimelineEventData[] }): Pr
 }
 
 export class TicketRepository {
-  constructor(private prisma: PrismaClient) {}
+  constructor(private prisma: Db) {}
 
   async findAll(): Promise<any[]> {
     const tickets = await this.prisma.ticket.findMany({
@@ -57,6 +72,12 @@ export class TicketRepository {
       include: TIMELINE_IN_ORDER,
     });
     return ticket ? toTicket(ticket) : undefined;
+  }
+
+  /** The current society's name, copied onto each ticket for display. */
+  private async societyName(): Promise<string> {
+    const profile = await this.prisma.societyProfile.findFirst({ select: { societyName: true } });
+    return profile?.societyName || '';
   }
 
   /**
@@ -78,6 +99,7 @@ export class TicketRepository {
     const ticket = await this.prisma.ticket.create({
       data: {
         id: ticketId,
+        societyId: requireSocietyId(),
         flatNumber: data.flatNumber || 'Unknown Flat',
         residentName: data.residentName || 'Resident',
         residentPhone: data.residentPhone || '+91 98000 00000',
@@ -89,9 +111,12 @@ export class TicketRepository {
         // pressure later from status alone.
         slaDueAt: slaDueAt(data.urgency),
         images: data.images || [],
-        societyName: 'Shree Ram Enclave, Powai',
+        societyName: await this.societyName(),
         residentId: data.residentId,
         vendorId: data.vendorId,
+        flatId: data.flatId ?? null,
+        commonAreaId: data.commonAreaId ?? null,
+        assetId: data.assetId ?? null,
         timeline: {
           create: {
             title: 'Ticket Created',
@@ -213,13 +238,14 @@ export class TicketRepository {
     category?: string,
     urgency?: string,
     status?: string,
-    flatNumber?: string,
+    residentScope?: ResidentScope,
   ): Promise<any[]> {
     const where: any = { deletedAt: null };
 
-    // Restricts the result to one flat. Callers pass this to stop a resident
-    // reading other flats' tickets; it is ANDed with any keyword filter.
-    if (flatNumber) where.flatNumber = flatNumber;
+    // Stops a resident reading other flats' tickets; ANDed with any keyword filter.
+    if (residentScope) {
+      where.AND = [{ OR: [{ flatId: { in: residentScope.flatIds } }, { residentId: residentScope.residentId }] }];
+    }
 
     if (query) {
       where.OR = [
