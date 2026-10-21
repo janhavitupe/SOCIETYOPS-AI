@@ -2,7 +2,7 @@ import type { AuthContextType } from '@/context/AuthContext';
 
 /**
  * Society roles as the frontend routes them; they match src/auth/actor.ts.
- * 'worker' has a screen reserved for it but no accounts until Phase 2.
+ * 'worker' is a vendor's own login, made when a manager adds the vendor.
  */
 export type Role = 'society_admin' | 'manager' | 'committee' | 'resident' | 'worker';
 

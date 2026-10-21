@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { fromNodeHeaders } from 'better-auth/node';
 import { auth } from './auth';
-import { identityFrom, isManager, isSocietyAdmin, isStaff, resolveActor } from './actor';
+import { identityFrom, isManager, isSocietyAdmin, isStaff, isWorker, resolveActor } from './actor';
 import { setRequestSociety } from '../requestContext';
 
 /**
@@ -63,3 +63,6 @@ export const requireManager = guard(isManager, 'Manager access required');
 
 /** Society admins only: settings, roles and billing. */
 export const requireAdmin = guard(isSocietyAdmin, 'Society admin access required');
+
+/** Vendors' own people: their jobs and nothing else. */
+export const requireWorker = guard(isWorker, 'Vendor access required');

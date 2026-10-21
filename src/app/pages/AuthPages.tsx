@@ -67,7 +67,7 @@ export function useSubmit() {
  * Phone, then a six-digit code. Verifying a number that has no account yet
  * creates one, so the same form signs people in and signs them up.
  */
-function OtpForm({ submitLabel }: { submitLabel: string }) {
+export function OtpForm({ submitLabel }: { submitLabel: string }) {
   const { sendOtp, verifyOtp } = useAuth();
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState('');

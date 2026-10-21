@@ -30,7 +30,13 @@ export interface TimelineEvent {
 
 export interface Ticket {
   id: string; // e.g. SOC-1042
-  flatNumber: string; // e.g. A-402
+  flatNumber: string; // e.g. A-402, or "Lift B2, Tower B Lobby"
+  /** Where it is: a flat, or a common area and optionally an asset in it. */
+  flatId?: string | null;
+  commonAreaId?: string | null;
+  assetId?: string | null;
+  /** Others who reported the same common-area problem while it was open. */
+  alsoReportedBy?: string[];
   residentName: string;
   residentPhone: string;
   issueCategory: IssueCategory;

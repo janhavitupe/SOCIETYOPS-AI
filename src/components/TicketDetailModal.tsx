@@ -94,10 +94,20 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({
                   <span>Resident Name:</span>
                   <span className="font-bold text-[#1A1A1A] dark:text-white">{ticket.residentName}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span>Flat Number:</span>
-                  <span className="font-mono font-bold text-[#6366F1]">{ticket.flatNumber}</span>
+                <div className="flex justify-between gap-3">
+                  <span>
+                    {ticket.flatId || !(ticket.assetId || ticket.commonAreaId) ? 'Flat Number:' : 'Location:'}
+                  </span>
+                  <span className="font-mono font-bold text-[#6366F1] text-right">{ticket.flatNumber}</span>
                 </div>
+                {!!ticket.alsoReportedBy?.length && (
+                  <div className="flex justify-between">
+                    <span>Also reported by:</span>
+                    <span className="font-bold text-[#1A1A1A] dark:text-white">
+                      {ticket.alsoReportedBy.length} more resident{ticket.alsoReportedBy.length > 1 ? 's' : ''}
+                    </span>
+                  </div>
+                )}
                 <div className="flex justify-between">
                   <span>Phone Number:</span>
                   <span className="font-bold text-[#1A1A1A] dark:text-slate-200">{ticket.residentPhone}</span>

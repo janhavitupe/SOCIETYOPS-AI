@@ -8,6 +8,7 @@ import { requireSignedIn } from '../auth/authMiddleware';
 import { unscopedPrisma } from '../database/prisma';
 import { validateBody } from './validate';
 import { activeSocietyBody, updateAccountBody } from './schemas';
+import { pendingRequestsFor } from '../services/joining';
 
 /**
  * The signed-in person's own account: who they are, which societies they
@@ -19,7 +20,7 @@ const router = Router();
 router.get('/me', requireSignedIn, async (req, res) => {
   const identity = req.identity!;
 
-  const [memberships, credential] = await Promise.all([
+  const [memberships, credential, pendingRequests] = await Promise.all([
     unscopedPrisma.membership.findMany({
       where: { userId: identity.userId, status: 'active' },
       include: { society: { select: { id: true, name: true, status: true } } },
@@ -29,6 +30,7 @@ router.get('/me', requireSignedIn, async (req, res) => {
       where: { userId: identity.userId, providerId: 'credential', password: { not: null } },
       select: { id: true },
     }),
+    pendingRequestsFor(identity.userId),
   ]);
 
   // One entry per society, with every role the person holds there.
@@ -56,6 +58,8 @@ router.get('/me', requireSignedIn, async (req, res) => {
     },
     activeSocietyId: actor?.societyId ?? null,
     societies: [...societies.values()],
+    // Join requests still waiting for a manager, so /welcome can say so.
+    pendingRequests,
   });
 });
 

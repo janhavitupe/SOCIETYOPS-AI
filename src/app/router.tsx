@@ -10,6 +10,7 @@ import type { AuthContextType } from '@/context/AuthContext';
 import { LoginPage, SignUpPage } from './pages/AuthPages';
 import { WelcomePage } from './pages/WelcomePage';
 import { CreateSocietyPage } from './pages/CreateSocietyPage';
+import { InvitePage, JoinPage } from './pages/JoinPages';
 import { AppShell } from './AppShell';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { ErrorPage } from './pages/ErrorPage';
@@ -37,8 +38,11 @@ const rootRoute = createRootRouteWithContext<RouterContext>()({
 function leaveIfSignedIn({ context, search }: { context: RouterContext; search: { redirect?: string } }) {
   if (context.auth.isAuthenticated) {
     const home = homeFor(context.auth);
-    // A redirect back into the app only makes sense once there is an app to enter.
-    throw redirect({ href: home === '/welcome' ? home : (safeRedirect(search.redirect) ?? home) });
+    const target = safeRedirect(search.redirect);
+    // A redirect back into the app only makes sense once there is an app to
+    // enter, except to a join or invite link, which is how people get one.
+    const opensDoor = !!target && /^\/(join|invite)\//.test(target);
+    throw redirect({ href: opensDoor || home !== '/welcome' ? (target ?? home) : home });
   }
 }
 
@@ -73,6 +77,13 @@ const welcomeRoute = createRoute({
   },
   component: WelcomePage,
 });
+
+/**
+ * Joining with the society's code, and accepting a personal invite. Open to
+ * everyone: each page asks for a phone code itself when nobody is signed in.
+ */
+const joinRoute = createRoute({ getParentRoute: () => rootRoute, path: '/join/$code', component: JoinPage });
+const inviteRoute = createRoute({ getParentRoute: () => rootRoute, path: '/invite/$token', component: InvitePage });
 
 /** Setting up an additional society, for someone who already belongs to one. */
 const newSocietyRoute = createRoute({
@@ -158,7 +169,7 @@ const workerRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/worker',
   beforeLoad: requireRole(['worker']),
-  component: lazyRouteComponent(() => import('./pages/ComingSoonPage'), 'WorkerHomePage'),
+  component: lazyRouteComponent(() => import('./pages/WorkerPage'), 'WorkerPage'),
 });
 
 const platformRoute = createRoute({
@@ -176,6 +187,8 @@ const routeTree = rootRoute.addChildren([
   signUpRoute,
   welcomeRoute,
   newSocietyRoute,
+  joinRoute,
+  inviteRoute,
   appRoute.addChildren([
     indexRoute,
     residentRoute,

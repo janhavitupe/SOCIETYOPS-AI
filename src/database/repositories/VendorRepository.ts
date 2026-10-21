@@ -53,11 +53,12 @@ export class VendorRepository {
    * activeJobsCount counter, which can drift.
    *
    * If nobody is marked Available it falls back to the least-loaded vendor in
-   * the category rather than leaving the ticket undispatched.
+   * the category rather than leaving the ticket undispatched. Vendors in
+   * `excluding` (who turned the job down) are never chosen.
    */
-  async findBestForCategory(category: string): Promise<any | undefined> {
+  async findBestForCategory(category: string, excluding: string[] = []): Promise<any | undefined> {
     const vendors = await this.prisma.vendor.findMany({
-      where: { category, deletedAt: null },
+      where: { category, deletedAt: null, id: { notIn: excluding } },
     });
 
     if (vendors.length === 0) return undefined;

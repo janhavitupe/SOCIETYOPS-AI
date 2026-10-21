@@ -351,7 +351,15 @@ export class TicketRepository {
 
     // Stops a resident reading other flats' tickets; ANDed with any keyword filter.
     if (residentScope) {
-      where.AND = [{ OR: [{ flatId: { in: residentScope.flatIds } }, { residentId: residentScope.residentId }] }];
+      where.AND = [
+        {
+          OR: [
+            { flatId: { in: residentScope.flatIds } },
+            { residentId: residentScope.residentId },
+            { alsoReportedBy: { has: residentScope.residentId } },
+          ],
+        },
+      ];
     }
 
     if (query) {

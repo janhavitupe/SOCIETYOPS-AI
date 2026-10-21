@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useSociety, useUpdateSociety } from '../queries';
 import { SocietyDetailsFields, emptySocietyDetails, societyDetailsPayload } from '../SocietyDetailsFields';
 import { FormError } from './AuthPages';
+import { StaffInvitesCard } from '../JoinWidgets';
 
 /** Society admins: the society's details and the link residents join with. */
 export function SocietySettingsPage() {
@@ -91,6 +92,8 @@ export function SocietySettingsPage() {
           </Button>
         </CardContent>
       </Card>
+
+      <StaffInvitesCard />
     </div>
   );
 }

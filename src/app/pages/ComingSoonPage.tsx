@@ -17,10 +17,6 @@ function ComingSoon({ title, description }: { title: string; description: string
   );
 }
 
-export function WorkerHomePage() {
-  return <ComingSoon title="My jobs" description="The worker view arrives with staff and vendor accounts." />;
-}
-
 export function PlatformHomePage() {
   return <ComingSoon title="Platform admin" description="The platform console arrives with multi-society support." />;
 }

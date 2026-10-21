@@ -33,7 +33,7 @@ beforeAll(async () => {
   resident = await actorFor('RES-001');
   manager = await actorFor('RES-003');
   const foreign = await makeTicket(manager, {
-    flatNumber: 'A-305',
+    flatNumber: 'A-304',
     issueCategory: 'Electrical',
     description: 'Belongs to another flat',
     urgency: 'Low',
@@ -86,7 +86,7 @@ describe('reading other flats', () => {
   it('allows a manager get_ticket on any flat', async () => {
     const result: any = await executeToolCall('get_ticket', { ticketId: foreignTicketId }, manager);
     expect(result.success).toBe(true);
-    expect(result.ticket.flatNumber).toBe('A-305');
+    expect(result.ticket.flatNumber).toBe('A-304');
   });
 
   it('scopes search_ticket to the resident own flat', async () => {

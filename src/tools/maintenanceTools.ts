@@ -5,7 +5,7 @@ import type { ChatCompletionTool } from 'openai/resources/chat/completions';
 import { IssueCategory, UrgencyLevel, TicketStatus } from '../types';
 import { buildDailyReport } from '../services/analytics';
 import { canActOnTicket, canSeeTicket, isManager as isManagerActor, isStaff, type Actor } from '../auth/actor';
-import { resolveTicketLocation } from '../services/ticketLocation';
+import { fileTicket } from '../services/filing';
 import { afterTicketChange } from '../services/rebalance';
 import { closeRefusal, escalateRefusal } from '../services/ticketRules';
 
@@ -27,7 +27,13 @@ export const maintenanceToolDeclarations: ChatCompletionTool[] = [
         type: 'object',
         properties: {
           flatNumber: str(
-            'Flat or Tower number, e.g. "B-402". Ignored for residents, who are always pinned to their own flat.',
+            'Flat number, e.g. "B-402". Ignored for residents, who are always pinned to their own flat. Leave out for a common-area problem.',
+          ),
+          commonAreaId: str(
+            'For a problem outside the flats: the id of the common area from the society layout, e.g. the lobby or terrace.',
+          ),
+          assetId: str(
+            'For a problem with a particular lift, pump, DG set, fire panel or CCTV: its id from the society layout. Takes precedence over commonAreaId.',
           ),
           residentName: str('Name of the resident reporting the issue. Ignored for residents.'),
           residentPhone: str('Phone number of the resident'),
@@ -233,30 +239,32 @@ export async function executeToolCall(name: string, args: any, actor: ToolActor)
   switch (name) {
     case 'create_ticket': {
       // Identity comes from the session. A resident is pinned to a flat they
-      // occupy whatever the model was persuaded to pass.
-      const location = await resolveTicketLocation(actor, { flatNumber: args.flatNumber });
-      if ('error' in location) return denied(location.error);
-
-      const ticket = await ticketRepo.create({
-        flatId: location.flatId,
-        flatNumber: location.flatNumber,
-        residentName: isManager ? args.residentName || actor.name : actor.name,
-        residentPhone: isManager ? args.residentPhone : (actor.phone ?? undefined),
+      // occupy, or a common area, whatever the model was persuaded to pass.
+      const result = await fileTicket(actor, {
+        flatNumber: args.flatNumber,
+        commonAreaId: args.commonAreaId || undefined,
+        assetId: args.assetId || undefined,
+        residentName: args.residentName,
+        residentPhone: args.residentPhone,
         issueCategory: (args.issueCategory as IssueCategory) || 'General Repairs',
         description: args.description,
         urgency: (args.urgency as UrgencyLevel) || 'Medium',
         images: args.images || [],
-        residentId: isManager ? undefined : actor.id,
       });
+      if ('error' in result) return denied(result.error);
+      const { ticket: fresh, duplicate, assignedVendor } = result;
 
-      const bestVendor = await vendorRepo.findBestForCategory(ticket.issueCategory);
-      let assignedVendor: any = null;
-      if (bestVendor) {
-        await ticketRepo.assignVendor(ticket.id, bestVendor.id);
-        assignedVendor = bestVendor;
+      if (duplicate) {
+        return {
+          success: true,
+          ticket: fresh,
+          duplicate: true,
+          message:
+            `This was already reported as ticket #${fresh.id} (${fresh.flatNumber}), which is ${fresh.status}` +
+            `${fresh.assignedVendorName ? ` with ${fresh.assignedVendorName}` : ''}. The report was added to it; no new ticket was created. ` +
+            'Tell the person it is already being handled and give the ticket number.',
+        };
       }
-
-      const fresh = (await ticketRepo.findById(ticket.id)) || ticket;
 
       // Tell the model about the queue, so it does not promise a busy vendor's
       // best-case time. Other residents' details stay out of it.
@@ -272,7 +280,7 @@ export async function executeToolCall(name: string, args: any, actor: ToolActor)
         success: true,
         ticket: fresh,
         assignedVendor,
-        message: `Ticket #${fresh.id} created for Flat ${fresh.flatNumber}.${dispatchNote}`,
+        message: `Ticket #${fresh.id} created for ${fresh.flatNumber}.${dispatchNote}`,
       };
     }
 

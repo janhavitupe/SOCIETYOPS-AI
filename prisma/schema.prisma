@@ -56,7 +56,7 @@ model Membership {
   society   Society  @relation(fields: [societyId], references: [id], onDelete: Cascade)
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  /// society_admin | manager | committee | resident
+  /// society_admin | manager | committee | worker | resident
   role      String
   /// invited | pending | active | removed
   status    String   @default("active")
@@ -90,6 +90,8 @@ model User {
   accounts            Account[]
   memberships         Membership[]
   occupancies         FlatOccupant[] @relation("occupant")
+  /// Vendors this person works for, across societies.
+  vendorAccounts      Vendor[]       @relation("vendorAccount")
   ticketsReported     Ticket[]
 }
 
@@ -327,6 +329,14 @@ model Ticket {
   residentFeedback   String?
   residentRating     Int?
 
+  /// What the vendor reported when finishing the job, with "after" photos.
+  workNote           String?
+  workImages         String[]  @default([])
+  /// Vendors who turned this job down; it is never given back to them.
+  declinedVendorIds  String[]  @default([])
+  /// Other people who reported the same common-area problem while this was open.
+  alsoReportedBy     String[]  @default([])
+
   /// Where the problem is: a flat, or a common area and optionally its asset.
   flatId             String?
   flat               Flat?       @relation(fields: [flatId], references: [id], onDelete: SetNull)
@@ -351,6 +361,7 @@ model Ticket {
   @@index([assetId])
   @@index([residentId])
   @@index([vendorId])
+  @@index([alsoReportedBy], type: Gin)
 }
 
 /// Scoped through its ticket rather than its own societyId.
@@ -382,6 +393,9 @@ model Vendor {
   skills            String[]
   societyName       String
   avatarUrl         String?
+  /// The person who signs in to work this vendor's jobs, matched by phone.
+  userId            String?
+  user              User?     @relation("vendorAccount", fields: [userId], references: [id], onDelete: SetNull)
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
   deletedAt         DateTime?
@@ -390,6 +404,7 @@ model Vendor {
   amcAssets         Asset[]
 
   @@index([societyId, category])
+  @@index([userId])
 }
 
 model NotificationLog {

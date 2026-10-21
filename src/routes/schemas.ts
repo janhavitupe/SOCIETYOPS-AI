@@ -179,6 +179,40 @@ export const moveOutBody = z.object({
   moveOutDate: z.coerce.date().optional(),
 });
 
+// --- Joining and invites ---
+
+export const joinCodeParams = z.object({
+  code: z
+    .string()
+    .trim()
+    .regex(/^[A-Za-z0-9]{6,12}$/, 'Not a join code'),
+});
+export type JoinCodeParams = z.infer<typeof joinCodeParams>;
+
+export const joinRequestBody = z.object({
+  flatId: text(64),
+  type: z.enum(OCCUPANT_TYPES),
+  /** For someone who signed up on the join page and has no name yet. */
+  name: text(100).optional(),
+});
+
+export const INVITABLE_ROLES = ['manager', 'committee', 'resident'] as const;
+
+export const createInviteBody = z
+  .object({
+    phone,
+    name: text(100).optional(),
+    role: z.enum(INVITABLE_ROLES),
+    flatId: text(64).optional(),
+    occupantType: z.enum(OCCUPANT_TYPES).optional(),
+  })
+  .refine((b) => b.role !== 'resident' || !!b.flatId, { message: 'A resident invite needs a flat', path: ['flatId'] });
+
+export const inviteTokenParams = z.object({
+  token: z.string().regex(/^[A-Za-z0-9_-]{20,64}$/, 'Not an invite link'),
+});
+export type InviteTokenParams = z.infer<typeof inviteTokenParams>;
+
 // --- Tickets ---
 
 export const idParams = z.object({ id: text(64) });
@@ -200,6 +234,9 @@ export const createTicketBody = z.object({
   urgency: z.enum(URGENCIES).default('Medium'),
   flatId: text(64).optional(),
   flatNumber: text(60).optional(),
+  /** A problem outside any flat: a common area, or a particular asset in one. */
+  commonAreaId: text(64).optional(),
+  assetId: text(64).optional(),
   residentName: text(100).optional(),
   residentPhone: phone.optional(),
   images: imageRefs.default([]),
@@ -258,6 +295,76 @@ export const societyProfileBody = z
     maintenancePhone: z.string().trim().max(30),
     maintenanceEmail: z.union([z.literal(''), z.string().trim().email().max(200)]),
     highlights: z.array(text(100)).max(10),
+  })
+  .partial()
+  .refine((b) => Object.values(b).some((v) => v !== undefined), { message: 'No updatable fields provided' });
+
+// --- Worker (a vendor's own jobs) ---
+
+export const workerActionBody = z.object({
+  action: z.enum(['accept', 'on_my_way', 'start', 'need_parts', 'complete', 'decline']),
+  /** Parts needed, work done, or why the job is declined. */
+  note: z.string().trim().max(1000).optional(),
+  /** "After" photos, as upload keys. */
+  images: imageRefs.default([]),
+});
+
+export const workerDutyBody = z.object({ onDuty: z.boolean() });
+
+// --- Common areas and assets ---
+
+export const COMMON_AREA_KINDS = [
+  'lobby',
+  'terrace',
+  'parking',
+  'garden',
+  'clubhouse',
+  'gym',
+  'pool',
+  'stp',
+  'other',
+] as const;
+export const ASSET_KINDS = ['lift', 'water_pump', 'dg_set', 'fire_panel', 'cctv', 'other'] as const;
+
+/** "2027-03-31": a calendar day, stored as midnight UTC. */
+const day = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a date like 2027-03-31')
+  .transform((s) => new Date(`${s}T00:00:00Z`));
+
+export const createCommonAreaBody = z.object({
+  name: text(80),
+  kind: z.enum(COMMON_AREA_KINDS).default('other'),
+  towerId: text(64).nullable().default(null),
+});
+
+export const updateCommonAreaBody = createCommonAreaBody
+  .partial()
+  .refine((b) => Object.values(b).some((v) => v !== undefined), { message: 'No updatable fields provided' });
+
+const assetFields = {
+  name: text(80),
+  kind: z.enum(ASSET_KINDS).default('other'),
+  commonAreaId: text(64).nullable().default(null),
+  towerId: text(64).nullable().default(null),
+  make: z.string().trim().max(80).nullable().default(null),
+  serialNumber: z.string().trim().max(80).nullable().default(null),
+  amcVendorId: text(64).nullable().default(null),
+  amcExpiresOn: day.nullable().default(null),
+};
+
+export const createAssetBody = z.object(assetFields);
+
+export const updateAssetBody = z
+  .object({
+    name: assetFields.name,
+    kind: z.enum(ASSET_KINDS),
+    commonAreaId: text(64).nullable(),
+    towerId: text(64).nullable(),
+    make: z.string().trim().max(80).nullable(),
+    serialNumber: z.string().trim().max(80).nullable(),
+    amcVendorId: text(64).nullable(),
+    amcExpiresOn: day.nullable(),
   })
   .partial()
   .refine((b) => Object.values(b).some((v) => v !== undefined), { message: 'No updatable fields provided' });

@@ -164,15 +164,20 @@ describe('ticket routes across societies', () => {
       .send({ issueCategory: 'Plumbing', description: 'cross-society by id', flatId: shreeFlat.id });
     expect(byId.status).toBe(400);
 
-    // A number that only exists elsewhere stays a free-text location here.
+    // A number that only exists elsewhere is not a place here at all.
     const byNumber = await api
       .post('/api/tickets')
       .set(bearer(greenManager))
       .send({ issueCategory: 'Plumbing', description: 'cross-society by number', flatNumber: 'B-402' });
-    expect(byNumber.status).toBe(201);
-    created.push(byNumber.body.id);
-    expect(byNumber.body.flatId).toBeNull();
-    expect(byNumber.body.societyId).toBe(SOCIETIES.greenValley);
+    expect(byNumber.status).toBe(400);
+
+    // Nor are another society's common areas and assets.
+    const lift = await unscopedPrisma.asset.findFirstOrThrow({ where: { societyId: SOCIETIES.shreeRam } });
+    const byAsset = await api
+      .post('/api/tickets')
+      .set(bearer(greenManager))
+      .send({ issueCategory: 'Lift & Elevator', description: 'cross-society asset', assetId: lift.id });
+    expect(byAsset.status).toBe(400);
   });
 
   it('new tickets are dispatched only to the caller’s vendors', async () => {
@@ -374,6 +379,30 @@ describe('coverage', () => {
     'GET /api/flats/:id/occupants',
     'POST /api/flats/:id/occupants',
     'POST /api/occupants/:id/move-out',
+    // Joining and invites: cross-society attempts in joining.test.ts.
+    'GET /api/join/:code', // public; shows flat numbers only, never occupants
+    'POST /api/join/:code',
+    'GET /api/join-requests',
+    'POST /api/join-requests/:id/approve',
+    'POST /api/join-requests/:id/reject',
+    'GET /api/invites',
+    'POST /api/invites',
+    'DELETE /api/invites/:id',
+    'GET /api/invite-links/:token', // public; the unguessable token is the credential
+    'POST /api/invite-links/:token/accept',
+    // Common areas and assets: cross-society attempts in places.test.ts.
+    'GET /api/common-areas',
+    'POST /api/common-areas',
+    'PATCH /api/common-areas/:id',
+    'DELETE /api/common-areas/:id',
+    'POST /api/assets',
+    'PATCH /api/assets/:id',
+    'DELETE /api/assets/:id',
+    // A vendor's own jobs: other vendors and other societies in worker.test.ts.
+    'GET /api/worker/jobs',
+    'GET /api/worker/jobs/:id',
+    'POST /api/worker/jobs/:id/status',
+    'PUT /api/worker/duty',
     'GET /api/notifications',
     'GET /api/logs',
     'GET /api/analytics',

@@ -24,6 +24,9 @@ import {
   type Tower,
 } from '../buildingQueries';
 import { FormError } from './AuthPages';
+import { InviteLinkBox, JoinRequestsCard } from '../JoinWidgets';
+import { CommonAreasCard } from '../CommonAreasCard';
+import { useJoinActions, type Invite } from '../joinQueries';
 
 const FLAT_TYPES = ['1RK', '1BHK', '2BHK', '3BHK', '4BHK', '5BHK', 'villa', 'shop', 'office', 'other'];
 const KIND_LABEL: Record<Tower['kind'], string> = { tower: 'Tower', wing: 'Wing', block: 'Block', lane: 'Lane' };
@@ -50,12 +53,16 @@ export function BuildingsPage() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Buildings & residents</h1>
-          <p className="text-sm text-muted-foreground">Towers, their flats, and who lives in each one.</p>
+          <p className="text-sm text-muted-foreground">
+            Towers, their flats and who lives in each one, and the common areas and assets everyone shares.
+          </p>
         </div>
         <Button onClick={() => setAddingTower(true)}>
           <Plus /> Add tower or wing
         </Button>
       </div>
+
+      <JoinRequestsCard />
 
       {towers.data && towers.data.length === 0 ? (
         <Card>
@@ -86,6 +93,8 @@ export function BuildingsPage() {
           {tower && <TowerPanel tower={tower} />}
         </div>
       )}
+
+      <CommonAreasCard />
 
       <AddTowerDialog open={addingTower} onOpenChange={setAddingTower} onAdded={setTowerId} />
     </div>
@@ -570,9 +579,13 @@ function OccupantsDialog({ flat, onClose }: { flat: Flat | null; onClose: () => 
   const [phone, setPhone] = useState('');
   const [type, setType] = useState<Occupant['type']>('owner');
   const [notice, setNotice] = useState<string | null>(null);
+  const { invite } = useJoinActions();
+  const [madeInvite, setMadeInvite] = useState<Invite | null>(null);
 
   useEffect(() => {
     setNotice(null);
+    setMadeInvite(null);
+    invite.reset();
     actions.addOccupant.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reset when a different flat opens
   }, [flat?.id]);
@@ -596,6 +609,16 @@ function OccupantsDialog({ flat, onClose }: { flat: Flat | null; onClose: () => 
           setPhone('');
         },
       },
+    );
+  };
+
+  // The alternative to adding someone directly: a link they open and accept.
+  const sendInvite = () => {
+    if (!flat) return;
+    setNotice(null);
+    invite.mutate(
+      { phone, name: name || undefined, role: 'resident', flatId: flat.id, occupantType: type },
+      { onSuccess: setMadeInvite },
     );
   };
 
@@ -684,9 +707,17 @@ function OccupantsDialog({ flat, onClose }: { flat: Flat | null; onClose: () => 
               ))}
             </NativeSelect>
           </div>
-          <FormError message={actions.addOccupant.error?.message ?? actions.moveOut.error?.message ?? null} />
+          <FormError
+            message={
+              actions.addOccupant.error?.message ?? actions.moveOut.error?.message ?? invite.error?.message ?? null
+            }
+          />
           {notice && <p className="text-sm text-muted-foreground">{notice}</p>}
+          {madeInvite && <InviteLinkBox invite={madeInvite} />}
           <DialogFooter>
+            <Button type="button" variant="outline" disabled={invite.isPending || !phone} onClick={sendInvite}>
+              {invite.isPending ? 'Creating…' : 'Send invite link instead'}
+            </Button>
             <Button type="submit" disabled={actions.addOccupant.isPending}>
               {actions.addOccupant.isPending ? 'Adding…' : 'Add resident'}
             </Button>

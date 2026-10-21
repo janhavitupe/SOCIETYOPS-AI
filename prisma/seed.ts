@@ -5,6 +5,8 @@ import bcrypt from 'bcryptjs';
 import { DATABASE_SCHEMA, prisma, unscopedPrisma } from '../src/database/prisma';
 import { requireSocietyId, withSociety } from '../src/requestContext';
 import { canonicalPhone } from '../src/services/phone';
+import { linkVendorAccount } from '../src/services/vendorAccounts';
+import { seedPlaces } from './seedPlaces';
 
 /**
  * Demo data: two societies, so tenant isolation can be seen and tested.
@@ -590,6 +592,33 @@ async function seedGreenValley() {
   });
 }
 
+/**
+ * Every vendor gets the login it would get from the Vendors page. Two have a
+ * password, so the vendor screen can be tried without an OTP.
+ */
+async function seedVendorAccounts() {
+  await createUser({
+    id: 'VEN-01',
+    name: 'Ramesh Kumar',
+    phone: '+91 98201 44321',
+    email: 'ramesh@vendors.example',
+    password: 'ramesh123',
+  });
+  await createUser({
+    id: 'VEN-G1',
+    name: 'Sunil Patil',
+    phone: '+91 99000 33333',
+    email: 'sunil@vendors.example',
+    password: 'sunil123',
+  });
+
+  for (const vendor of await unscopedPrisma.vendor.findMany()) {
+    const phone = canonicalPhone(vendor.phone)!;
+    await unscopedPrisma.vendor.update({ where: { id: vendor.id }, data: { phone } });
+    await linkVendorAccount({ ...vendor, phone });
+  }
+}
+
 async function main() {
   if ((await unscopedPrisma.society.count()) > 0) {
     if (process.env.SEED_RESET !== 'true') {
@@ -605,6 +634,8 @@ async function main() {
 
   await seedShreeRam();
   await seedGreenValley();
+  await seedVendorAccounts();
+  await seedPlaces();
   console.log('Seed completed successfully');
 }
 

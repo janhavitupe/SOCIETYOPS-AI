@@ -11,14 +11,17 @@ import {
   Users,
   Settings,
   Building2,
+  Wrench,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { isManagerRole } from '../app/roles';
 import { SocietySwitcher } from '../app/SocietySwitcher';
 
+type Tab = 'resident' | 'manager' | 'vendors' | 'buildings' | 'jobs';
+
 interface NavigationHeaderProps {
-  activeTab: 'resident' | 'manager' | 'vendors' | 'buildings';
-  setActiveTab: (tab: 'resident' | 'manager' | 'vendors' | 'buildings') => void;
+  activeTab: Tab;
+  setActiveTab: (tab: Tab) => void;
   societyName: string;
   isDarkMode: boolean;
   setIsDarkMode: (val: boolean) => void;
@@ -45,6 +48,10 @@ export const NavigationHeader: React.FC<NavigationHeaderProps> = ({
 }) => {
   const { logout } = useAuth();
   const role = user?.role || 'guest';
+  const roles: string[] = user?.roles ?? [];
+  const isWorker = roles.includes('worker');
+  // A vendor who does not live here has no use for the resident assistant.
+  const showChat = !isWorker || roles.some((r) => r !== 'worker');
   return (
     <header
       className={`border-b sticky top-0 z-30 transition-colors ${isDarkMode ? 'bg-[#181817] border-[#2D2D2A] text-slate-100' : 'bg-white border-[#E5E5E1] text-[#1A1A1A]'}`}
@@ -70,17 +77,32 @@ export const NavigationHeader: React.FC<NavigationHeaderProps> = ({
 
           {/* Navigation Tabs - hide manager/vendor for residents */}
           <nav className="hidden md:flex items-center space-x-1 bg-[#F0F0EE] dark:bg-[#222220] p-1 rounded-md border border-[#E5E5E1] dark:border-[#2D2D2A]">
-            <button
-              onClick={() => setActiveTab('resident')}
-              className={`flex items-center space-x-1.5 px-3.5 py-1.5 rounded text-xs font-bold uppercase tracking-wider transition-all ${
-                activeTab === 'resident'
-                  ? 'bg-white dark:bg-[#181817] text-[#6366F1] shadow-2xs'
-                  : 'text-[#666660] dark:text-slate-400 hover:text-[#1A1A1A] dark:hover:text-white'
-              }`}
-            >
-              <MessageSquare className="w-3.5 h-3.5" />
-              <span>Resident Chat</span>
-            </button>
+            {isWorker && (
+              <button
+                onClick={() => setActiveTab('jobs')}
+                className={`flex items-center space-x-1.5 px-3.5 py-1.5 rounded text-xs font-bold uppercase tracking-wider transition-all ${
+                  activeTab === 'jobs'
+                    ? 'bg-white dark:bg-[#181817] text-[#6366F1] shadow-2xs'
+                    : 'text-[#666660] dark:text-slate-400 hover:text-[#1A1A1A] dark:hover:text-white'
+                }`}
+              >
+                <Wrench className="w-3.5 h-3.5" />
+                <span>My Jobs</span>
+              </button>
+            )}
+            {showChat && (
+              <button
+                onClick={() => setActiveTab('resident')}
+                className={`flex items-center space-x-1.5 px-3.5 py-1.5 rounded text-xs font-bold uppercase tracking-wider transition-all ${
+                  activeTab === 'resident'
+                    ? 'bg-white dark:bg-[#181817] text-[#6366F1] shadow-2xs'
+                    : 'text-[#666660] dark:text-slate-400 hover:text-[#1A1A1A] dark:hover:text-white'
+                }`}
+              >
+                <MessageSquare className="w-3.5 h-3.5" />
+                <span>Resident Chat</span>
+              </button>
+            )}
 
             {isManagerRole(role) && (
               <>
@@ -202,15 +224,28 @@ export const NavigationHeader: React.FC<NavigationHeaderProps> = ({
 
         {/* Mobile Sub-Nav */}
         <div className="md:hidden flex items-center justify-around py-2 border-t border-[#E5E5E1] dark:border-[#2D2D2A]">
-          <button
-            onClick={() => setActiveTab('resident')}
-            className={`flex items-center space-x-1 px-3 py-1.5 rounded text-xs font-bold uppercase tracking-wider ${
-              activeTab === 'resident' ? 'bg-[#1A1A1A] text-white' : 'text-[#666660] dark:text-slate-400'
-            }`}
-          >
-            <MessageSquare className="w-3.5 h-3.5" />
-            <span>Chat</span>
-          </button>
+          {isWorker && (
+            <button
+              onClick={() => setActiveTab('jobs')}
+              className={`flex items-center space-x-1 px-3 py-1.5 rounded text-xs font-bold uppercase tracking-wider ${
+                activeTab === 'jobs' ? 'bg-[#1A1A1A] text-white' : 'text-[#666660] dark:text-slate-400'
+              }`}
+            >
+              <Wrench className="w-3.5 h-3.5" />
+              <span>Jobs</span>
+            </button>
+          )}
+          {showChat && (
+            <button
+              onClick={() => setActiveTab('resident')}
+              className={`flex items-center space-x-1 px-3 py-1.5 rounded text-xs font-bold uppercase tracking-wider ${
+                activeTab === 'resident' ? 'bg-[#1A1A1A] text-white' : 'text-[#666660] dark:text-slate-400'
+              }`}
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+              <span>Chat</span>
+            </button>
+          )}
           {isManagerRole(role) && (
             <>
               <button

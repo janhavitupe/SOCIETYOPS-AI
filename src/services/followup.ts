@@ -42,7 +42,8 @@ export async function runFollowupCycle(now: Date = new Date()): Promise<Followup
 
   for (const ticket of allTickets) {
     if (ticket.status === 'Open') {
-      const vendor = await vendorRepo.findBestForCategory(ticket.issueCategory);
+      // A job everyone declined waits for the manager rather than going round again.
+      const vendor = await vendorRepo.findBestForCategory(ticket.issueCategory, ticket.declinedVendorIds);
       if (vendor) {
         await ticketRepo.assignVendor(ticket.id, vendor.id);
         dispatched += 1;

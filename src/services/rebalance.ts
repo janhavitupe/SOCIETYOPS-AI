@@ -31,6 +31,9 @@ interface QueuedJob {
   jobsAhead: number;
   status: string;
   assignedAt: number;
+  /** The vendor said they are on their way: it stays with them. */
+  onTheWay: boolean;
+  declinedBy: string[];
 }
 
 /**
@@ -61,7 +64,12 @@ export async function rebalanceCategory(category: string): Promise<Reassignment[
         status: true,
         assignedVendorId: true,
         createdAt: true,
-        timeline: { where: { type: 'assigned' }, orderBy: { timestamp: 'desc' }, take: 1, select: { timestamp: true } },
+        declinedVendorIds: true,
+        timeline: {
+          where: { type: { in: ['assigned', 'worker_on_the_way'] } },
+          orderBy: { timestamp: 'desc' },
+          select: { timestamp: true, type: true },
+        },
       },
     });
 
@@ -69,12 +77,15 @@ export async function rebalanceCategory(category: string): Promise<Reassignment[
     const queues = new Map<string, QueuedJob[]>();
     for (const job of jobs) {
       const queue = queues.get(job.assignedVendorId!) ?? [];
+      const assigned = job.timeline.find((e) => e.type === 'assigned');
       queue.push({
         id: job.id,
         vendorId: job.assignedVendorId!,
         jobsAhead: 0,
         status: job.status,
-        assignedAt: (job.timeline[0]?.timestamp ?? job.createdAt).getTime(),
+        assignedAt: (assigned?.timestamp ?? job.createdAt).getTime(),
+        onTheWay: job.timeline[0]?.type === 'worker_on_the_way',
+        declinedBy: job.declinedVendorIds,
       });
       queues.set(job.assignedVendorId!, queue);
     }
@@ -84,19 +95,24 @@ export async function rebalanceCategory(category: string): Promise<Reassignment[
     }
     const load = (vendorId: string) => queues.get(vendorId)?.length ?? 0;
 
-    // The job waiting behind the most others; ties go to the one waiting longest.
+    // Least loaded first; higher rating breaks the tie.
+    const targetFor = (job: QueuedJob) =>
+      available
+        .filter((v) => v.id !== job.vendorId && !job.declinedBy.includes(v.id))
+        .sort((a, b) => load(a.id) - load(b.id) || b.rating - a.rating)[0];
+
+    // The job waiting behind the most others that someone can reach sooner;
+    // ties go to the one waiting longest.
     const waiting = [...queues.values()]
       .flat()
-      .filter((j) => NOT_STARTED_STATUSES.includes(j.status) && j.jobsAhead > 0)
+      .filter((j) => NOT_STARTED_STATUSES.includes(j.status) && j.jobsAhead > 0 && !j.onTheWay)
       .sort((a, b) => b.jobsAhead - a.jobsAhead || a.assignedAt - b.assignedAt);
-    const job = waiting[0];
+    const job = waiting.find((j) => {
+      const target = targetFor(j);
+      return target && load(target.id) < j.jobsAhead;
+    });
     if (!job) break;
-
-    // Least loaded first; higher rating breaks the tie.
-    const target = available
-      .filter((v) => v.id !== job.vendorId)
-      .sort((a, b) => load(a.id) - load(b.id) || b.rating - a.rating)[0];
-    if (!target || load(target.id) >= job.jobsAhead) break;
+    const target = targetFor(job)!;
 
     const from = vendors.find((v) => v.id === job.vendorId)!;
     const moved = await ticketRepo.assignVendor(
@@ -140,12 +156,12 @@ async function rehomeOrphans(category: string): Promise<Reassignment[]> {
       assignedVendorId: { not: null, notIn: vendors.map((v) => v.id) },
     },
     orderBy: { createdAt: 'asc' },
-    select: { id: true, assignedVendorId: true, assignedVendorName: true },
+    select: { id: true, assignedVendorId: true, assignedVendorName: true, declinedVendorIds: true },
   });
 
   const moves: Reassignment[] = [];
   for (const orphan of orphans) {
-    const target = await vendorRepo.findBestForCategory(category);
+    const target = await vendorRepo.findBestForCategory(category, orphan.declinedVendorIds);
     if (!target) break;
     const previous = orphan.assignedVendorName || 'the previous vendor';
     const moved = await ticketRepo.assignVendor(
@@ -168,7 +184,7 @@ async function rehomeOrphans(category: string): Promise<Reassignment[]> {
   return moves;
 }
 
-async function tellResident(ticket: any, previousVendor: string): Promise<void> {
+export async function tellResident(ticket: any, previousVendor: string): Promise<void> {
   if (!ticket.residentPhone) return;
   await sendNotification({
     ticketId: ticket.id,

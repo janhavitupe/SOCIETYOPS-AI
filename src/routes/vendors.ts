@@ -7,6 +7,7 @@ import { isOnDuty } from '../database/repositories/VendorRepository';
 import { requireAuth, requireManager } from '../auth/authMiddleware';
 import { requireSocietyId } from '../requestContext';
 import { rebalanceCategory } from '../services/rebalance';
+import { linkVendorAccount, unlinkVendorAccount } from '../services/vendorAccounts';
 import { validateBody, validateParams } from './validate';
 import { createVendorBody, idParams, updateVendorBody, type IdParams } from './schemas';
 
@@ -35,6 +36,7 @@ router.post('/vendors', requireManager, validateBody(createVendorBody), async (r
     },
   });
   logger.info('Vendor added', { vendorId: vendor.id, category: vendor.category, by: req.user!.id });
+  await linkVendorAccount(vendor);
 
   // A new vendor takes over jobs queued behind busy ones straight away.
   const reassigned = isOnDuty(vendor) ? await rebalanceCategory(vendor.category) : [];
@@ -55,6 +57,7 @@ router.patch(
 
     const vendor = await prisma.vendor.update({ where: { id: req.params.id }, data: req.body });
     logger.info('Vendor updated', { vendorId: vendor.id, fields: Object.keys(req.body), by: req.user!.id });
+    if (vendor.phone !== existing.phone) await linkVendorAccount(vendor);
 
     // Coming on duty, or moving to another trade, frees capacity there.
     const freed = isOnDuty(vendor) && (!isOnDuty(existing) || existing.category !== vendor.category);
@@ -77,6 +80,7 @@ router.delete(
       return res.status(404).json({ error: 'Vendor not found' });
     }
     logger.info('Vendor removed', { vendorId: req.params.id, by: req.user!.id });
+    await unlinkVendorAccount(existing);
 
     // Their open jobs go to the rest of the trade rather than waiting forever.
     const reassigned = await rebalanceCategory(existing.category);

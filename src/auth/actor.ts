@@ -1,11 +1,14 @@
 import { unscopedPrisma } from '../database/prisma';
 import type { AuthSession } from './auth';
 
-export const SOCIETY_ROLES = ['society_admin', 'manager', 'committee', 'resident'] as const;
+export const SOCIETY_ROLES = ['society_admin', 'manager', 'committee', 'worker', 'resident'] as const;
 export type SocietyRole = (typeof SOCIETY_ROLES)[number];
 
-/** Higher outranks lower; the highest role is the one the UI routes by. */
-const RANK: Record<SocietyRole, number> = { society_admin: 4, manager: 3, committee: 2, resident: 1 };
+/**
+ * Higher outranks lower; the highest role is the one the UI routes by. A
+ * plumber who also lives in the society opens on their jobs, not their flat.
+ */
+const RANK: Record<SocietyRole, number> = { society_admin: 5, manager: 4, committee: 3, worker: 2, resident: 1 };
 
 /** Run the society's tickets, workers and vendors. */
 export const MANAGER_ROLES: SocietyRole[] = ['society_admin', 'manager'];
@@ -39,6 +42,8 @@ export interface Actor {
   flats: { id: string; number: string }[];
   /** The first occupied flat's number, for display and legacy ticket fields. */
   flatNumber: string;
+  /** The vendor whose jobs this person works, for a worker. */
+  vendorId: string | null;
 }
 
 export const highestRole = (roles: SocietyRole[]): SocietyRole =>
@@ -47,6 +52,7 @@ export const highestRole = (roles: SocietyRole[]): SocietyRole =>
 export const isManager = (actor: Pick<Actor, 'roles'>) => actor.roles.some((r) => MANAGER_ROLES.includes(r));
 export const isStaff = (actor: Pick<Actor, 'roles'>) => actor.roles.some((r) => STAFF_ROLES.includes(r));
 export const isSocietyAdmin = (actor: Pick<Actor, 'roles'>) => actor.roles.includes('society_admin');
+export const isWorker = (actor: Pick<Actor, 'roles' | 'vendorId'>) => actor.roles.includes('worker') && !!actor.vendorId;
 
 export function identityFrom(session: AuthSession): Identity {
   const user = session.user as AuthSession['user'] & { phoneNumber?: string | null; platformRole?: string | null };
@@ -91,6 +97,14 @@ export async function resolveActor(identity: Identity, activeSocietyId?: string 
   });
   const flats = occupancies.map((o) => o.flat);
 
+  const vendor = roles.includes('worker')
+    ? await unscopedPrisma.vendor.findFirst({
+        where: { userId: identity.userId, societyId, deletedAt: null },
+        select: { id: true },
+        orderBy: { createdAt: 'asc' },
+      })
+    : null;
+
   return {
     id: identity.userId,
     name: identity.name,
@@ -100,6 +114,7 @@ export async function resolveActor(identity: Identity, activeSocietyId?: string 
     role: highestRole(roles),
     flats,
     flatNumber: flats[0]?.number ?? '',
+    vendorId: vendor?.id ?? null,
   };
 }
 
@@ -107,12 +122,14 @@ interface TicketLocation {
   flatId?: string | null;
   flatNumber?: string | null;
   residentId?: string | null;
+  /** People who reported the same common-area problem after the first. */
+  alsoReportedBy?: string[];
 }
 
 /**
  * Whether the actor may see a ticket. Staff see the whole society; a resident
- * sees tickets for flats they occupy and tickets they reported themselves
- * (which covers their common-area reports).
+ * sees tickets for flats they occupy and tickets they reported themselves,
+ * including a common-area ticket their report joined.
  */
 export function canSeeTicket(actor: Actor, ticket: TicketLocation): boolean {
   if (isStaff(actor)) return true;
@@ -130,6 +147,7 @@ export function canActOnTicket(actor: Actor, ticket: TicketLocation): boolean {
 
 function ownsTicket(actor: Actor, ticket: TicketLocation): boolean {
   if (ticket.residentId && ticket.residentId === actor.id) return true;
+  if (ticket.alsoReportedBy?.includes(actor.id)) return true;
   if (ticket.flatId) return actor.flats.some((f) => f.id === ticket.flatId);
   return false;
 }

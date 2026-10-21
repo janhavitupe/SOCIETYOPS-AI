@@ -27,6 +27,9 @@ import followupRoutes from './src/routes/followup';
 import chatRoutes from './src/routes/chat';
 import uploadRoutes from './src/routes/uploads';
 import buildingRoutes from './src/routes/buildings';
+import joiningRoutes from './src/routes/joining';
+import workerRoutes from './src/routes/worker';
+import placeRoutes from './src/routes/places';
 
 /** TRUST_PROXY as Express wants it: a hop count, true/false, or a list of addresses. */
 function trustProxySetting(value?: string): boolean | number | string {
@@ -146,6 +149,9 @@ export async function createApp(
   app.use('/api', chatRoutes);
   app.use('/api', uploadRoutes);
   app.use('/api', buildingRoutes);
+  app.use('/api', joiningRoutes);
+  app.use('/api', workerRoutes);
+  app.use('/api', placeRoutes);
 
   if (opts.attachFrontend) {
     await opts.attachFrontend(app);

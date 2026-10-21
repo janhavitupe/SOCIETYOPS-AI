@@ -87,7 +87,7 @@ function ProfileStep() {
 }
 
 function NoSocietyStep() {
-  const { user, logout } = useAuth();
+  const { user, logout, pendingRequests } = useAuth();
   const [creating, setCreating] = useState(false);
 
   if (creating) {
@@ -109,6 +109,16 @@ function NoSocietyStep() {
       }
     >
       <div className="grid gap-3 text-sm text-muted-foreground">
+        {pendingRequests.map((r) => (
+          <p
+            key={r.id}
+            role="status"
+            className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-foreground"
+          >
+            Your request to join <span className="font-medium">{r.society.name}</span> for flat{' '}
+            <span className="font-medium">{r.flatNumber}</span> is waiting for the society office to approve it.
+          </p>
+        ))}
         <p>
           <span className="font-medium text-foreground">Residents:</span> open the invite link your society sent you, or
           ask the society office for one.

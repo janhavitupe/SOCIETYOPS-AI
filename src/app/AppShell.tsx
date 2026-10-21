@@ -23,9 +23,10 @@ export function useShell(): ShellContextValue {
   return value;
 }
 
-type Tab = 'resident' | 'manager' | 'vendors' | 'buildings';
+type Tab = 'resident' | 'manager' | 'vendors' | 'buildings' | 'jobs';
 
 const TAB_PATHS: Record<Tab, string> = {
+  jobs: '/worker',
   resident: '/resident',
   manager: '/manager',
   vendors: '/manager/vendors',
@@ -33,6 +34,7 @@ const TAB_PATHS: Record<Tab, string> = {
 };
 
 function tabFor(pathname: string): Tab {
+  if (pathname.startsWith('/worker')) return 'jobs';
   if (pathname.startsWith('/manager/vendors')) return 'vendors';
   if (pathname.startsWith('/manager/buildings')) return 'buildings';
   if (pathname.startsWith('/manager')) return 'manager';

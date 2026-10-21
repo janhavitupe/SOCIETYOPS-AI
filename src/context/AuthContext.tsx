@@ -24,16 +24,27 @@ export interface SocietySummary {
   roles: string[];
 }
 
+/** A request to join a society that is still waiting for a manager. */
+export interface PendingRequest {
+  id: string;
+  society: { id: string; name: string };
+  flatNumber: string;
+  type: string;
+  requestedAt: string;
+}
+
 interface MeResponse {
   user: SessionUser;
   activeSocietyId: string | null;
   societies: SocietySummary[];
+  pendingRequests: PendingRequest[];
 }
 
 export interface AuthContextType {
   user: SessionUser | null;
   activeSocietyId: string | null;
   societies: SocietySummary[];
+  pendingRequests: PendingRequest[];
   isAuthenticated: boolean;
   /** Signed in and working inside a society. */
   hasSociety: boolean;
@@ -124,6 +135,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         user: me?.user ?? null,
         activeSocietyId: me?.activeSocietyId ?? null,
         societies: me?.societies ?? [],
+        pendingRequests: me?.pendingRequests ?? [],
         isAuthenticated: !!me,
         hasSociety: !!me?.activeSocietyId,
         isLoading,

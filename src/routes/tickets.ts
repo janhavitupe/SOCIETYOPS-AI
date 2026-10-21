@@ -1,9 +1,9 @@
 import { Router, Request, Response } from 'express';
 import { logger } from '../logger';
-import { ticketRepo, vendorRepo } from '../database/repositories';
+import { ticketRepo } from '../database/repositories';
 import { requireAuth, requireManager } from '../auth/authMiddleware';
 import { canActOnTicket, canSeeTicket, isManager, isStaff } from '../auth/actor';
-import { resolveTicketLocation } from '../services/ticketLocation';
+import { fileTicket } from '../services/filing';
 import { closeRefusal, escalateRefusal } from '../services/ticketRules';
 import { checkAttachments } from '../services/storage';
 import { afterTicketChange } from '../services/rebalance';
@@ -64,41 +64,25 @@ router.get('/tickets/:id', requireAuth, validateParams(idParams), async (req: Re
 });
 
 router.post('/tickets', requireAuth, validateBody(createTicketBody), async (req, res) => {
-  const { flatId, flatNumber, residentName, residentPhone, issueCategory, description, urgency, images } = req.body;
-
   // Identity comes from the session, not the body: a resident may only file
-  // for a flat they occupy. Managers may file on someone's behalf, so the
-  // body's flat and name are honoured only for them.
+  // for a flat they occupy, or a common area. Managers may file on someone's
+  // behalf, so the body's flat and name are honoured only for them.
   const user = req.user!;
-  const manager = isManager(user);
 
-  const location = await resolveTicketLocation(user, { flatId, flatNumber });
-  if ('error' in location) return res.status(400).json({ error: location.error });
-
-  const attachmentProblem = await checkAttachments(user.id, images);
+  const attachmentProblem = await checkAttachments(user.id, req.body.images);
   if (attachmentProblem) return res.status(400).json({ error: attachmentProblem });
 
-  let ticket = await ticketRepo.create({
-    flatId: location.flatId,
-    flatNumber: location.flatNumber,
-    residentName: manager ? residentName || user.name : user.name,
-    residentPhone: manager ? residentPhone : (user.phone ?? undefined),
-    issueCategory,
-    description,
-    urgency,
-    images,
-    residentId: manager ? undefined : user.id,
-  });
+  const result = await fileTicket(user, req.body);
+  if ('error' in result) return res.status(400).json({ error: result.error });
+  const { ticket, duplicate } = result;
 
-  const bestVendor = await vendorRepo.findBestForCategory(ticket.issueCategory);
-  if (bestVendor) {
-    await ticketRepo.assignVendor(ticket.id, bestVendor.id);
-    const updated = await ticketRepo.findById(ticket.id);
-    if (updated) ticket = updated;
+  if (duplicate) {
+    // The same lift reported twice is one job: the second report joins the first.
+    logger.info('Duplicate report joined open ticket', { ticketId: ticket.id, by: user.id });
+    return res.status(200).json({ ...ticket, duplicate: true });
   }
-
   logger.info('Ticket created', { ticketId: ticket.id, category: ticket.issueCategory, urgency: ticket.urgency });
-  res.status(201).json(ticket);
+  res.status(201).json({ ...ticket, duplicate: false });
 });
 
 router.patch(
