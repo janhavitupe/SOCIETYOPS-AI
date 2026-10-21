@@ -16,6 +16,7 @@ import { toNodeHandler } from 'better-auth/node';
 import { auth, allowedOrigins, CLIENT_IP_HEADER } from './src/auth/auth';
 import { authenticate } from './src/auth/authMiddleware';
 import accountRoutes from './src/routes/account';
+import societiesRoutes from './src/routes/societies';
 import { startJobs, stopJobs } from './src/services/jobs';
 import healthRoutes from './src/routes/health';
 import ticketRoutes from './src/routes/tickets';
@@ -25,6 +26,7 @@ import societyRoutes from './src/routes/society';
 import followupRoutes from './src/routes/followup';
 import chatRoutes from './src/routes/chat';
 import uploadRoutes from './src/routes/uploads';
+import buildingRoutes from './src/routes/buildings';
 
 /** TRUST_PROXY as Express wants it: a hop count, true/false, or a list of addresses. */
 function trustProxySetting(value?: string): boolean | number | string {
@@ -127,6 +129,7 @@ export async function createApp(
   // query to the user's society. The per-route guards decide what needs what.
   app.use('/api', authenticate);
   app.use('/api', accountRoutes);
+  app.use('/api', societiesRoutes);
 
   // --- REST API ENDPOINTS ---
   //
@@ -142,6 +145,7 @@ export async function createApp(
   app.use('/api', followupRoutes);
   app.use('/api', chatRoutes);
   app.use('/api', uploadRoutes);
+  app.use('/api', buildingRoutes);
 
   if (opts.attachFrontend) {
     await opts.attachFrontend(app);

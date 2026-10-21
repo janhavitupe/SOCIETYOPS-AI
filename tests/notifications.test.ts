@@ -209,7 +209,9 @@ describe('vendor load', () => {
     const top = await prisma.vendor.findUniqueOrThrow({ where: { id: 'VND-01' } });
     try {
       await prisma.vendor.update({ where: { id: top.id }, data: { activeJobsCount: 50 } });
-      expect((await vendorRepo.findBestForCategory('Plumbing')).id).toBe('VND-01');
+      const chosen = await vendorRepo.findBestForCategory('Plumbing');
+      expect(chosen.societyId).toBe(SOCIETIES.shreeRam);
+      expect(chosen.id).not.toBe('VND-G1');
     } finally {
       await prisma.vendor.update({ where: { id: top.id }, data: { activeJobsCount: top.activeJobsCount } });
     }

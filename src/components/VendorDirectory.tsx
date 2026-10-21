@@ -118,14 +118,16 @@ export const VendorDirectory: React.FC<VendorDirectoryProps> = ({
                 <span className="font-medium">Status:</span>
                 <span
                   className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-                    vendor.availability === 'Available'
+                    vendor.status === 'Available'
                       ? 'bg-[#ECFDF5] text-[#059669]'
-                      : vendor.availability === 'On Job'
-                        ? 'bg-blue-50 text-blue-700'
+                      : vendor.status === 'Busy'
+                        ? 'bg-amber-50 text-amber-700'
                         : 'bg-slate-100 text-slate-800'
                   }`}
                 >
-                  {vendor.availability} ({vendor.activeJobsCount} active)
+                  {vendor.status === 'Busy'
+                    ? `Busy · ${vendor.openJobs} job${vendor.openJobs > 1 ? 's' : ''}`
+                    : vendor.status}
                 </span>
               </div>
             </div>

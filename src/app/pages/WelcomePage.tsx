@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { AuthFrame, FormError, useSubmit } from './AuthPages';
+import { CreateSocietyForm } from './CreateSocietyPage';
 
 /**
  * Where a signed-in person lands until they belong to a society: first their
@@ -87,6 +88,16 @@ function ProfileStep() {
 
 function NoSocietyStep() {
   const { user, logout } = useAuth();
+  const [creating, setCreating] = useState(false);
+
+  if (creating) {
+    return (
+      <AuthFrame title="Set up a society" description="You will be its admin. You can change these details later.">
+        <CreateSocietyForm onCancel={() => setCreating(false)} />
+      </AuthFrame>
+    );
+  }
+
   return (
     <AuthFrame
       title={`Welcome, ${user?.name}`}
@@ -103,9 +114,10 @@ function NoSocietyStep() {
           ask the society office for one.
         </p>
         <p>
-          <span className="font-medium text-foreground">Society admins:</span> setting up a new society will be
-          available here shortly.
+          <span className="font-medium text-foreground">Running a society?</span> Set it up here and invite your
+          residents and staff.
         </p>
+        <Button onClick={() => setCreating(true)}>Set up a new society</Button>
       </div>
     </AuthFrame>
   );

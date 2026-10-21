@@ -124,8 +124,22 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({
                   </div>
                   <div className="flex justify-between">
                     <span>Estimated ETA:</span>
-                    <span className="font-bold text-[#10B981]">{ticket.estimatedEta || '25 mins'}</span>
+                    <span className="font-bold text-[#10B981]">{ticket.estimatedEta || '—'}</span>
                   </div>
+                  {ticket.vendorQueue && (
+                    <div className="flex justify-between">
+                      <span>Vendor's queue:</span>
+                      <span
+                        className={`font-semibold ${ticket.vendorQueue.position > 1 ? 'text-amber-600' : 'text-[#10B981]'}`}
+                      >
+                        {ticket.vendorQueue.position === 1
+                          ? ticket.vendorQueue.total > 1
+                            ? `Next up (${ticket.vendorQueue.total} jobs open)`
+                            : 'Next up'
+                          : `${ticket.vendorQueue.position} of ${ticket.vendorQueue.total}`}
+                      </span>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <p className="text-amber-600 font-semibold italic">
@@ -203,7 +217,8 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({
                 <option value="">Select Vendor to Dispatch...</option>
                 {vendors.map((v) => (
                   <option key={v.id} value={v.id}>
-                    {v.name} ({v.category}) — {v.rating} stars [{v.availability}]
+                    {v.name} ({v.category}) — {v.rating} stars [
+                    {v.status === 'Busy' ? `Busy, ${v.openJobs} jobs` : v.status}]
                   </option>
                 ))}
               </select>

@@ -108,3 +108,53 @@ export async function deleteTickets(ids: string[]): Promise<void> {
 
   await unscopedPrisma.ticket.deleteMany({ where: { id: { in: ids } } });
 }
+
+/** Captures the codes the OTP sender would have texted. */
+export class CapturingOtpSender {
+  readonly name = 'capture';
+  codes = new Map<string, string>();
+  async send(phone: string, code: string) {
+    this.codes.set(phone, code);
+  }
+}
+
+/** Verifies a phone by code, as a new person does. Returns the session token. */
+export async function verifyPhone(phone: string): Promise<string> {
+  const { setOtpSender } = await import('../src/services/otp');
+  const sender = new CapturingOtpSender();
+  setOtpSender(sender);
+  try {
+    const api = await agent();
+    await api.post('/api/auth/phone-number/send-otp').send({ phoneNumber: phone });
+    const verified = await api
+      .post('/api/auth/phone-number/verify')
+      .send({ phoneNumber: phone, code: sender.codes.get(phone) });
+    if (verified.status !== 200) throw new Error(`verify failed: ${verified.status} ${JSON.stringify(verified.body)}`);
+    return verified.body.token as string;
+  } finally {
+    setOtpSender(null);
+  }
+}
+
+/**
+ * Creates a brand-new account the way a person does: phone code, then name
+ * and password. Returns the session token. phone must be canonical (+91...).
+ */
+export async function signUp(phone: string, name: string, password = 'longenough1'): Promise<string> {
+  const token = await verifyPhone(phone);
+  const named = await (await agent()).patch('/api/me').set(bearer(token)).send({ name, password });
+  if (named.status !== 200) throw new Error(`profile failed: ${named.status} ${JSON.stringify(named.body)}`);
+  return token;
+}
+
+/** Deletes test users and every society they created (cascading their data). */
+export async function deleteUsersAndTheirSocieties(phones: string[]): Promise<void> {
+  const users = await unscopedPrisma.user.findMany({ where: { phoneNumber: { in: phones } }, select: { id: true } });
+  const ids = users.map((u) => u.id);
+  const owned = await unscopedPrisma.membership.findMany({
+    where: { userId: { in: ids }, role: 'society_admin', societyId: { notIn: Object.values(SOCIETIES) } },
+    select: { societyId: true },
+  });
+  await unscopedPrisma.society.deleteMany({ where: { id: { in: owned.map((m) => m.societyId) } } });
+  await unscopedPrisma.user.deleteMany({ where: { id: { in: ids } } });
+}

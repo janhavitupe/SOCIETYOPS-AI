@@ -3,10 +3,6 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
 import { currentSocietyId } from '../requestContext';
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-});
-
 /**
  * The driver adapter does not read ?schema= from the URL the way Prisma's own
  * engine did, so without this a non-public schema was migrated by the CLI but
@@ -20,13 +16,31 @@ function schemaFromUrl(url?: string): string | undefined {
   }
 }
 
+/** The schema this process works in: ?schema= in DATABASE_URL, else public. */
+export const DATABASE_SCHEMA = schemaFromUrl(process.env.DATABASE_URL) ?? 'public';
+
+if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(DATABASE_SCHEMA)) {
+  throw new Error(`DATABASE_URL names an unusable schema: ${DATABASE_SCHEMA}`);
+}
+
+/**
+ * search_path is set on every connection, not only passed to Prisma's
+ * generated queries, so raw SQL (the ticket-number sequence, the seed's
+ * TRUNCATE) also stays in this schema. Without it raw statements fell through
+ * to public: a test run reseeding its own schema emptied the dev data.
+ */
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  options: `-c search_path=${DATABASE_SCHEMA}`,
+});
+
 /**
  * The client with no tenant scoping. Only for code that is deliberately
  * society-agnostic: authentication, the society switcher, the job scheduler
  * finding which societies to run for, the seed and test setup.
  */
 export const unscopedPrisma = new PrismaClient({
-  adapter: new PrismaPg(pool, { schema: schemaFromUrl(process.env.DATABASE_URL) }),
+  adapter: new PrismaPg(pool, { schema: DATABASE_SCHEMA }),
   log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
 });
 

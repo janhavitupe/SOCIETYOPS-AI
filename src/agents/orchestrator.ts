@@ -3,6 +3,7 @@ import type { ChatCompletionMessageParam } from 'openai/resources/chat/completio
 import { maintenanceToolDeclarations, executeToolCall, ToolActor } from '../tools/maintenanceTools';
 import { chatRepo } from '../database/repositories';
 import { resolveImagesForModel } from '../services/storage';
+import { ordinal } from '../services/dispatch';
 import { AgentThoughtStep, Ticket, IssueCategory, UrgencyLevel } from '../types';
 
 type AgentName = AgentThoughtStep['agentName'];
@@ -150,8 +151,16 @@ export async function processResidentMessage(
         explanation: 'Formatted resident notification and confirmed status update.',
       });
 
-      await rememberTurn(actor, userText, result.replyText);
-      return { ...result, thoughtSteps, source: 'groq' };
+      // The model can file a ticket and then run out of rounds without writing
+      // anything; the screen then showed a stock line with no ticket details.
+      const replyText =
+        result.replyText.trim() ||
+        (result.ticketCreated
+          ? ticketConfirmation(actor, result.ticketCreated)
+          : 'Maaf kijiye, main abhi jawab nahi de paaya. Kripya apni baat ek baar phir likhein.');
+
+      await rememberTurn(actor, userText, replyText);
+      return { ...result, replyText, thoughtSteps, source: 'groq' };
     } catch (err) {
       fallbackReason = `Groq request failed: ${(err as Error).message}`;
       console.warn('Groq API call failed, using deterministic fallback engine:', err);
@@ -406,28 +415,50 @@ async function runDeterministicAgentFallback(
   });
 
   if (result.assignedVendor) {
+    const queued = ticketCreated.vendorQueue;
     thoughtSteps.push({
       agentName: 'Dispatcher Agent',
       toolCalled: 'assign_vendor',
       args: { ticketId: ticketCreated.id, vendorId: result.assignedVendor.id },
       resultSummary: `Auto-dispatched ${result.assignedVendor.name}`,
-      explanation: `Matched top-rated vendor ${result.assignedVendor.name} (Rating: ${result.assignedVendor.rating} stars, ETA: ${result.assignedVendor.avgResolutionTime}).`,
+      explanation:
+        `Matched ${result.assignedVendor.name} (Rating: ${result.assignedVendor.rating} stars). ` +
+        (queued && queued.position > 1
+          ? `Vendor is busy: queued ${ordinal(queued.position)} of ${queued.total}, ETA ${ticketCreated.estimatedEta}.`
+          : `ETA ${ticketCreated.estimatedEta}.`),
     });
   }
 
-  const vendorName = ticketCreated.assignedVendorName || 'Society Vendor Team';
-  const eta = ticketCreated.estimatedEta || '30 mins';
-
-  const replyText = `Namaste ${actor.name} ji! Aapki complaint register ho gayi hai.
-
- **Ticket ID**: #${ticketCreated.id}
- **Flat**: ${ticketCreated.flatNumber}
- **Category**: ${ticketCreated.issueCategory}
- **Urgency**: ${ticketCreated.urgency}
- **Assigned Vendor**: ${vendorName}
- **Expected Arrival**: ${eta}
-
-Hamare Dispatcher Agent ne technician ko notify kar diya hai. Status live track karne ke liye dashboard check karein!`;
+  const replyText = ticketConfirmation(actor, ticketCreated);
 
   return { replyText, thoughtSteps, ticketCreated, source: 'fallback', fallbackReason };
+}
+
+/**
+ * The confirmation a resident gets for a new ticket: its number, the vendor,
+ * the honest arrival estimate, and their place in the vendor's queue. Used by
+ * the fallback engine, and when the model files a ticket but writes no reply.
+ */
+function ticketConfirmation(actor: ToolActor, ticket: Ticket): string {
+  const vendorName = ticket.assignedVendorName || 'Society Vendor Team';
+  const queue = ticket.vendorQueue;
+  // Other residents' names and flats are never mentioned, only the count.
+  const queueLine =
+    queue && queue.position > 1
+      ? ` ${vendorName} abhi ${queue.position - 1} aur complaint${queue.position > 2 ? 's' : ''} pe kaam kar rahe hain, ` +
+        `aapka number ${ordinal(queue.position)} hai, isliye aane mein thoda zyada time lagega.`
+      : '';
+
+  return [
+    `Namaste ${actor.name} ji! Aapki complaint register ho gayi hai.`,
+    '',
+    ` **Ticket ID**: #${ticket.id}`,
+    ` **Flat**: ${ticket.flatNumber}`,
+    ` **Category**: ${ticket.issueCategory}`,
+    ` **Urgency**: ${ticket.urgency}`,
+    ` **Assigned Vendor**: ${vendorName}`,
+    ` **Expected Arrival**: ${ticket.estimatedEta || 'jaldi hi'}`,
+    '',
+    `Hamare Dispatcher Agent ne technician ko notify kar diya hai.${queueLine} Status live track karne ke liye dashboard check karein!`,
+  ].join('\n');
 }

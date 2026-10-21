@@ -241,6 +241,14 @@ describe('society data routes across societies', () => {
     expect(res.body.checkedCount).toBe(greenCount);
   });
 
+  it('society details are always the caller’s own', async () => {
+    const read = await api.get('/api/society').set(bearer(greenManager));
+    expect(read.body.id).toBe(SOCIETIES.greenValley);
+    expect(read.body.joinCode).toBe('GREENVAL');
+    // There is no id to aim at another society with, and a manager cannot edit.
+    expect((await api.patch('/api/society').set(bearer(greenManager)).send({ city: 'Mumbai' })).status).toBe(403);
+  });
+
   it('switching to a society you do not belong to is refused', async () => {
     const res = await api
       .post('/api/me/active-society')
@@ -339,6 +347,9 @@ describe('coverage', () => {
     'GET /api/me', // the caller's own memberships only (auth.test.ts)
     'PATCH /api/me', // the caller's own account only (auth.test.ts)
     'POST /api/me/active-society',
+    'POST /api/societies', // creates a new society; nothing to cross into (societies.test.ts)
+    'GET /api/society',
+    'PATCH /api/society',
     'GET /api/tickets',
     'GET /api/tickets/:id',
     'POST /api/tickets',
@@ -347,6 +358,22 @@ describe('coverage', () => {
     'POST /api/tickets/:id/escalate',
     'POST /api/tickets/:id/close',
     'GET /api/vendors',
+    // Vendor management and buildings: cross-society attempts in buildings.test.ts.
+    'POST /api/vendors',
+    'PATCH /api/vendors/:id',
+    'DELETE /api/vendors/:id',
+    'GET /api/towers',
+    'POST /api/towers',
+    'PATCH /api/towers/:id',
+    'DELETE /api/towers/:id',
+    'POST /api/towers/:id/flats/generate',
+    'GET /api/flats',
+    'POST /api/flats',
+    'PATCH /api/flats/:id',
+    'DELETE /api/flats/:id',
+    'GET /api/flats/:id/occupants',
+    'POST /api/flats/:id/occupants',
+    'POST /api/occupants/:id/move-out',
     'GET /api/notifications',
     'GET /api/logs',
     'GET /api/analytics',

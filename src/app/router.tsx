@@ -9,6 +9,7 @@ import {
 import type { AuthContextType } from '@/context/AuthContext';
 import { LoginPage, SignUpPage } from './pages/AuthPages';
 import { WelcomePage } from './pages/WelcomePage';
+import { CreateSocietyPage } from './pages/CreateSocietyPage';
 import { AppShell } from './AppShell';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { ErrorPage } from './pages/ErrorPage';
@@ -73,6 +74,17 @@ const welcomeRoute = createRoute({
   component: WelcomePage,
 });
 
+/** Setting up an additional society, for someone who already belongs to one. */
+const newSocietyRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/societies/new',
+  beforeLoad: ({ context, location }) => {
+    if (!context.auth.isAuthenticated) throw redirect({ to: '/login', search: { redirect: location.href } });
+    if (!context.auth.user?.name) throw redirect({ to: '/welcome' });
+  },
+  component: CreateSocietyPage,
+});
+
 /** Every signed-in page. ?ticket=<id> opens that ticket over whichever page is showing. */
 const appRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -123,6 +135,19 @@ const managerIndexRoute = createRoute({
   component: lazyRouteComponent(() => import('./pages/ManagerPage'), 'ManagerPage'),
 });
 
+const buildingsRoute = createRoute({
+  getParentRoute: () => managerRoute,
+  path: '/buildings',
+  component: lazyRouteComponent(() => import('./pages/BuildingsPage'), 'BuildingsPage'),
+});
+
+const settingsRoute = createRoute({
+  getParentRoute: () => managerRoute,
+  path: '/settings',
+  beforeLoad: requireRole(['society_admin']),
+  component: lazyRouteComponent(() => import('./pages/SocietySettingsPage'), 'SocietySettingsPage'),
+});
+
 const vendorsRoute = createRoute({
   getParentRoute: () => managerRoute,
   path: '/vendors',
@@ -150,10 +175,11 @@ const routeTree = rootRoute.addChildren([
   loginRoute,
   signUpRoute,
   welcomeRoute,
+  newSocietyRoute,
   appRoute.addChildren([
     indexRoute,
     residentRoute,
-    managerRoute.addChildren([managerIndexRoute, vendorsRoute]),
+    managerRoute.addChildren([managerIndexRoute, vendorsRoute, buildingsRoute, settingsRoute]),
     workerRoute,
     platformRoute,
   ]),

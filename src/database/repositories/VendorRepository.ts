@@ -1,35 +1,59 @@
 import type { Db } from '../prisma';
-import { Vendor as PrismaVendor } from '@prisma/client';
+import { OPEN_WORK_STATUSES } from '../../services/dispatch';
+
+/** Whether a vendor is working at all; the manager sets this. */
+export const isOnDuty = (vendor: { availability: string }) => vendor.availability !== 'Offline';
 
 /**
- * How much each live job discounts a vendor's rating when choosing between
- * them. At 0.3 a 4.9-rated plumber already holding two jobs (4.3) loses to a
- * 4.5-rated plumber holding none, but still beats a 4.0 who is idle.
+ * What a vendor is doing right now, worked out from their open tickets: Busy
+ * while they have jobs, Available when they have none, Offline when off duty.
+ * It used to be a label a manager set by hand, which nothing updated as jobs
+ * were assigned and finished.
  */
-const LOAD_PENALTY = 0.3;
+export type VendorStatus = 'Available' | 'Busy' | 'Offline';
 
 export class VendorRepository {
   constructor(private prisma: Db) {}
 
   async findAll(): Promise<any[]> {
-    return this.prisma.vendor.findMany({
+    const vendors = await this.prisma.vendor.findMany({
       where: { deletedAt: null },
       orderBy: { rating: 'desc' },
     });
+    return this.withLiveStatus(vendors);
   }
 
   async findById(id: string): Promise<any | undefined> {
-    return this.prisma.vendor.findFirst({ where: { id, deletedAt: null } });
+    const vendor = await this.prisma.vendor.findFirst({ where: { id, deletedAt: null } });
+    return vendor ? (await this.withLiveStatus([vendor]))[0] : null;
   }
 
   /**
-   * Picks the vendor for a category, balancing rating against current load.
+   * Adds status and the real number of open jobs. activeJobsCount is replaced
+   * by that count in what callers see, since the stored counter can drift.
+   */
+  private async withLiveStatus<T extends { id: string; availability: string }>(vendors: T[]) {
+    const open = await this.openJobCounts(vendors.map((v) => v.id));
+    return vendors.map((v) => {
+      const openJobs = open.get(v.id) ?? 0;
+      const status: VendorStatus = !isOnDuty(v) ? 'Offline' : openJobs > 0 ? 'Busy' : 'Available';
+      return { ...v, status, openJobs, activeJobsCount: openJobs };
+    });
+  }
+
+  /**
+   * Picks the vendor for a category: the available one with the shortest
+   * queue, and among equally busy ones the best rated.
    *
-   * Previously this took the highest-rated available vendor outright, so the
-   * top plumber received every plumbing job however many were already open,
-   * while activeJobsCount was tracked and never consulted. If nobody is marked
-   * Available it now falls back to the least-loaded vendor in the category
-   * rather than returning nothing and leaving the ticket undispatched.
+   * This used to be rating minus a penalty per job, so a 4.9-rated plumber
+   * with a job in hand beat an idle 4.0 one, and residents waited while a
+   * plumber sat free. It now matches the rule services/rebalance uses to move
+   * waiting jobs, so a new ticket is never placed where a rebalance would
+   * immediately move it. Queues are counted from open tickets, not the
+   * activeJobsCount counter, which can drift.
+   *
+   * If nobody is marked Available it falls back to the least-loaded vendor in
+   * the category rather than leaving the ticket undispatched.
    */
   async findBestForCategory(category: string): Promise<any | undefined> {
     const vendors = await this.prisma.vendor.findMany({
@@ -38,16 +62,23 @@ export class VendorRepository {
 
     if (vendors.length === 0) return undefined;
 
-    const available = vendors.filter((v) => v.availability === 'Available');
-    const pool = available.length > 0 ? available : vendors;
+    // Busy vendors are eligible too: the shortest queue wins, which is an idle
+    // vendor whenever there is one.
+    const onDuty = vendors.filter(isOnDuty);
+    const pool = onDuty.length > 0 ? onDuty : vendors;
 
-    return pool.reduce((best, candidate) =>
-      this.dispatchScore(candidate) > this.dispatchScore(best) ? candidate : best,
-    );
+    const queues = await this.openJobCounts(pool.map((v) => v.id));
+    return [...pool].sort((a, b) => (queues.get(a.id) ?? 0) - (queues.get(b.id) ?? 0) || b.rating - a.rating)[0];
   }
 
-  private dispatchScore(vendor: PrismaVendor): number {
-    return vendor.rating - vendor.activeJobsCount * LOAD_PENALTY;
+  /** Open jobs per vendor, from the tickets themselves. */
+  async openJobCounts(vendorIds: string[]): Promise<Map<string, number>> {
+    const rows = await this.prisma.ticket.groupBy({
+      by: ['assignedVendorId'],
+      where: { assignedVendorId: { in: vendorIds }, status: { in: OPEN_WORK_STATUSES }, deletedAt: null },
+      _count: { _all: true },
+    });
+    return new Map(rows.map((r) => [r.assignedVendorId!, r._count._all]));
   }
 
   async softDelete(id: string): Promise<boolean> {

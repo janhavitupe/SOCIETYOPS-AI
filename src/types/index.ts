@@ -49,9 +49,15 @@ export interface Ticket {
   societyName: string;
   lastFollowupAt?: string;
   escalationReason?: string;
+  /** Where the job stands in the assigned vendor's queue (single-ticket reads). */
+  vendorQueue?: { position: number; total: number } | null;
 }
 
-export type VendorAvailability = 'Available' | 'On Job' | 'Offline';
+/** On duty ('Available') or not; set by the manager. */
+export type VendorAvailability = 'Available' | 'Offline';
+
+/** What the vendor is doing now, from their open tickets. */
+export type VendorStatus = 'Available' | 'Busy' | 'Offline';
 
 export interface Vendor {
   id: string;
@@ -63,6 +69,10 @@ export interface Vendor {
   avgResolutionTime: string; // e.g. "45 mins"
   completedJobs: number;
   activeJobsCount: number;
+  /** Live: Busy while they have open jobs. */
+  status: VendorStatus;
+  /** Open jobs right now, counted from tickets. */
+  openJobs: number;
   skills: string[];
   societyName: string;
   avatarUrl?: string;

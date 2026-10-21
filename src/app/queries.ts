@@ -34,7 +34,43 @@ export const keys = {
   agentLogs: ['logs'] as const,
   residentProfiles: ['resident-profiles'] as const,
   analytics: ['analytics'] as const,
+  society: ['society'] as const,
 };
+
+/** The current society's own details (GET /api/society). */
+export interface SocietyDetails {
+  id: string;
+  name: string;
+  registrationNumber: string | null;
+  address: string;
+  city: string;
+  pinCode: string;
+  timezone: string;
+  status: 'onboarding' | 'active' | 'suspended';
+  onboardingStep: string | null;
+  logoKey: string | null;
+  logoUrl: string | null;
+  /** Only sent to managers. */
+  joinCode?: string;
+}
+
+export const useSociety = () =>
+  useQuery({
+    queryKey: keys.society,
+    queryFn: () => api<SocietyDetails>('/api/society'),
+  });
+
+export function useUpdateSociety() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (changes: Partial<SocietyDetails>) =>
+      api<SocietyDetails>('/api/society', { method: 'PATCH', body: JSON.stringify(changes) }),
+    onSuccess: (society) => {
+      client.setQueryData(keys.society, society);
+      client.invalidateQueries({ queryKey: keys.societyProfile });
+    },
+  });
+}
 
 export const useTickets = () =>
   useQuery({
@@ -117,7 +153,7 @@ export function useTicketActions() {
   return {
     assign: useMutation({
       mutationFn: ({ ticketId, vendorId }: { ticketId: string; vendorId: string }) =>
-        post(`/api/tickets/${ticketId}/assign`, { vendorId, estimatedEta: '25 mins' }),
+        post(`/api/tickets/${ticketId}/assign`, { vendorId }),
       ...options,
     }),
     escalate: useMutation({

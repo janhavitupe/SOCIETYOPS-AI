@@ -1,10 +1,12 @@
 import { ticketRepo, vendorRepo } from '../database/repositories';
+import { TicketRepository } from '../database/repositories/TicketRepository';
 import { sendNotification } from '../services/notifications';
 import type { ChatCompletionTool } from 'openai/resources/chat/completions';
 import { IssueCategory, UrgencyLevel, TicketStatus } from '../types';
 import { buildDailyReport } from '../services/analytics';
 import { canActOnTicket, canSeeTicket, isManager as isManagerActor, isStaff, type Actor } from '../auth/actor';
 import { resolveTicketLocation } from '../services/ticketLocation';
+import { afterTicketChange } from '../services/rebalance';
 import { closeRefusal, escalateRefusal } from '../services/ticketRules';
 
 const str = (description: string) => ({ type: 'string' as const, description });
@@ -250,17 +252,27 @@ export async function executeToolCall(name: string, args: any, actor: ToolActor)
       const bestVendor = await vendorRepo.findBestForCategory(ticket.issueCategory);
       let assignedVendor: any = null;
       if (bestVendor) {
-        await ticketRepo.assignVendor(ticket.id, bestVendor.id, bestVendor.avgResolutionTime);
+        await ticketRepo.assignVendor(ticket.id, bestVendor.id);
         assignedVendor = bestVendor;
       }
 
       const fresh = (await ticketRepo.findById(ticket.id)) || ticket;
 
+      // Tell the model about the queue, so it does not promise a busy vendor's
+      // best-case time. Other residents' details stay out of it.
+      const queued = fresh.vendorQueue && fresh.vendorQueue.position > 1;
+      const dispatchNote = assignedVendor
+        ? ` Dispatched ${assignedVendor.name} (${assignedVendor.rating} stars), estimated arrival ${fresh.estimatedEta}.` +
+          (queued
+            ? ` ${assignedVendor.name} is busy: this job is ${TicketRepository.describeQueue(fresh.vendorQueue, assignedVendor.name)}. Tell the resident they are in a queue and give the estimate; do not name the other residents.`
+            : '')
+        : ' No vendor is available for this category yet; the maintenance team will assign one.';
+
       return {
         success: true,
         ticket: fresh,
         assignedVendor,
-        message: `Ticket #${fresh.id} created for Flat ${fresh.flatNumber}.${assignedVendor ? ` Automatically dispatched vendor ${assignedVendor.name} (${assignedVendor.rating} stars).` : ''}`,
+        message: `Ticket #${fresh.id} created for Flat ${fresh.flatNumber}.${dispatchNote}`,
       };
     }
 
@@ -273,6 +285,7 @@ export async function executeToolCall(name: string, args: any, actor: ToolActor)
         description: args.description,
         urgency: args.urgency as UrgencyLevel,
       });
+      await afterTicketChange(updated);
       return { success: !!updated, ticket: updated };
     }
 
@@ -295,7 +308,7 @@ export async function executeToolCall(name: string, args: any, actor: ToolActor)
 
     case 'assign_vendor': {
       if (!isManager) return denied('Only maintenance staff can assign a vendor');
-      const ticket = await ticketRepo.assignVendor(args.ticketId, args.vendorId, args.estimatedEta || '30 mins');
+      const ticket = await ticketRepo.assignVendor(args.ticketId, args.vendorId, args.estimatedEta || undefined);
       return { success: !!ticket, ticket };
     }
 
@@ -378,6 +391,7 @@ export async function executeToolCall(name: string, args: any, actor: ToolActor)
           : {}),
       });
 
+      await afterTicketChange(closed);
       if (closed) {
         await sendNotification({
           ticketId: closed.id,

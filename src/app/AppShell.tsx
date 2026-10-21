@@ -1,4 +1,4 @@
-import { createContext, useContext, useState } from 'react';
+import { createContext, useContext, useEffect, useState } from 'react';
 import { Outlet, useLocation, useNavigate, useSearch } from '@tanstack/react-router';
 import { NavigationHeader } from '@/components/NavigationHeader';
 import { TicketDetailModal } from '@/components/TicketDetailModal';
@@ -23,18 +23,30 @@ export function useShell(): ShellContextValue {
   return value;
 }
 
-type Tab = 'resident' | 'manager' | 'vendors';
+type Tab = 'resident' | 'manager' | 'vendors' | 'buildings';
 
 const TAB_PATHS: Record<Tab, string> = {
   resident: '/resident',
   manager: '/manager',
   vendors: '/manager/vendors',
+  buildings: '/manager/buildings',
 };
 
 function tabFor(pathname: string): Tab {
   if (pathname.startsWith('/manager/vendors')) return 'vendors';
+  if (pathname.startsWith('/manager/buildings')) return 'buildings';
   if (pathname.startsWith('/manager')) return 'manager';
   return 'resident';
+}
+
+const DARK_MODE_KEY = 'societyops_dark_mode';
+
+function readDarkModePreference(): boolean {
+  try {
+    return localStorage.getItem(DARK_MODE_KEY) === '1';
+  } catch {
+    return false;
+  }
 }
 
 /** The frame around every signed-in page: header, drawers and the ticket modal. */
@@ -45,7 +57,19 @@ export function AppShell() {
   const { pathname } = useLocation();
   const { ticket: openTicketId } = useSearch({ from: '/app' });
 
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(readDarkModePreference);
+
+  // The class drives Tailwind's dark: styles and the shadcn colour tokens, so
+  // every part of the page, dialogs included, follows the toggle together.
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', isDarkMode);
+    try {
+      localStorage.setItem(DARK_MODE_KEY, isDarkMode ? '1' : '0');
+    } catch {
+      // Storage can be blocked; the choice then lasts until the page reloads.
+    }
+    return () => document.documentElement.classList.remove('dark');
+  }, [isDarkMode]);
   const [isNotifsOpen, setIsNotifsOpen] = useState(false);
   const [isReportOpen, setIsReportOpen] = useState(false);
 

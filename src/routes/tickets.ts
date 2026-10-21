@@ -6,6 +6,7 @@ import { canActOnTicket, canSeeTicket, isManager, isStaff } from '../auth/actor'
 import { resolveTicketLocation } from '../services/ticketLocation';
 import { closeRefusal, escalateRefusal } from '../services/ticketRules';
 import { checkAttachments } from '../services/storage';
+import { afterTicketChange } from '../services/rebalance';
 import { validateBody, validateParams, validateQuery } from './validate';
 import {
   idParams,
@@ -91,7 +92,7 @@ router.post('/tickets', requireAuth, validateBody(createTicketBody), async (req,
 
   const bestVendor = await vendorRepo.findBestForCategory(ticket.issueCategory);
   if (bestVendor) {
-    await ticketRepo.assignVendor(ticket.id, bestVendor.id, bestVendor.avgResolutionTime);
+    await ticketRepo.assignVendor(ticket.id, bestVendor.id);
     const updated = await ticketRepo.findById(ticket.id);
     if (updated) ticket = updated;
   }
@@ -114,6 +115,7 @@ router.patch(
       return res.status(404).json({ error: 'Ticket not found' });
     }
     logger.info('Ticket updated', { ticketId: req.params.id });
+    await afterTicketChange(updated);
     res.json(updated);
   },
 );
@@ -125,7 +127,8 @@ router.post(
   validateBody(assignVendorBody),
   async (req: Request<IdParams>, res: Response) => {
     const { vendorId, estimatedEta } = req.body;
-    const ticket = await ticketRepo.assignVendor(req.params.id, vendorId, estimatedEta || '30 mins');
+    // A manager's own estimate wins; otherwise it comes from the vendor's queue.
+    const ticket = await ticketRepo.assignVendor(req.params.id, vendorId, estimatedEta);
     if (!ticket) {
       logger.warn('Vendor assignment failed - not found', { ticketId: req.params.id, vendorId });
       return res.status(404).json({ error: 'Ticket or Vendor not found' });
@@ -197,6 +200,7 @@ router.post(
       ...(rating ? { residentRating: rating } : {}),
     });
     logger.info('Ticket closed', { ticketId: req.params.id });
+    await afterTicketChange(ticket);
     res.json(ticket);
   },
 );

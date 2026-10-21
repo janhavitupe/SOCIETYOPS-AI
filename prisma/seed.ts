@@ -2,7 +2,7 @@ import 'dotenv/config';
 import bcrypt from 'bcryptjs';
 // Reuses the configured clients. Prisma 7 requires a driver adapter, so a bare
 // `new PrismaClient()` here fails at construction.
-import { prisma, unscopedPrisma } from '../src/database/prisma';
+import { DATABASE_SCHEMA, prisma, unscopedPrisma } from '../src/database/prisma';
 import { requireSocietyId, withSociety } from '../src/requestContext';
 import { canonicalPhone } from '../src/services/phone';
 
@@ -207,7 +207,7 @@ async function seedShreeRam() {
           name: 'Satish Electrician',
           category: 'Electrical',
           rating: 4.8,
-          availability: 'On Job',
+          availability: 'Available',
           phone: '+91 98765 12345',
           avgResolutionTime: '35 mins',
           completedJobs: 198,
@@ -287,6 +287,7 @@ async function seedShreeRam() {
         urgency: 'High',
         status: 'Vendor Assigned',
         assignedVendorId: 'VND-01',
+        vendorId: 'VND-01',
         assignedVendorName: 'Ramesh Kumar Plumber',
         assignedVendorPhone: '+91 98201 44321',
         estimatedEta: '20 mins',
@@ -327,6 +328,7 @@ async function seedShreeRam() {
         urgency: 'Medium',
         status: 'Resolved',
         assignedVendorId: 'VND-07',
+        vendorId: 'VND-07',
         assignedVendorName: 'SecureComm Intercom Solutions',
         assignedVendorPhone: '+91 98450 66789',
         resolvedAt: minAgo(15),
@@ -365,6 +367,7 @@ async function seedShreeRam() {
         urgency: 'High',
         status: 'Escalated',
         assignedVendorId: 'VND-03',
+        vendorId: 'VND-03',
         assignedVendorName: 'Otis Elevator Care (Rajesh)',
         assignedVendorPhone: '+91 98112 88990',
         estimatedEta: '10 mins',
@@ -593,8 +596,11 @@ async function main() {
       console.log('Database already has societies; not seeding. Set SEED_RESET=true to wipe it and seed again.');
       return;
     }
-    await unscopedPrisma.$executeRawUnsafe(`TRUNCATE ${APP_TABLES.map((t) => `"${t}"`).join(', ')} CASCADE`);
-    console.log('Existing data removed (SEED_RESET=true)');
+    // Qualified with the schema as well as relying on search_path: an
+    // unqualified TRUNCATE once emptied the wrong schema.
+    const tables = APP_TABLES.map((t) => `"${DATABASE_SCHEMA}"."${t}"`).join(', ');
+    await unscopedPrisma.$executeRawUnsafe(`TRUNCATE ${tables} CASCADE`);
+    console.log(`Existing data removed from schema "${DATABASE_SCHEMA}" (SEED_RESET=true)`);
   }
 
   await seedShreeRam();

@@ -47,6 +47,138 @@ export const updateAccountBody = z
 
 export const activeSocietyBody = z.object({ societyId: text(64) });
 
+// --- Societies ---
+
+const pinCode = z
+  .string()
+  .trim()
+  .regex(/^[1-9][0-9]{5}$/, 'Enter a 6-digit PIN code');
+
+export const createSocietyBody = z.object({
+  name: text(150),
+  registrationNumber: z.string().trim().max(60).optional(),
+  address: text(300),
+  city: text(80),
+  pinCode,
+});
+
+/** Society admins edit the society's own details; status and join code are not editable here. */
+export const updateSocietyBody = z
+  .object({
+    name: text(150),
+    registrationNumber: z.string().trim().max(60),
+    address: text(300),
+    city: text(80),
+    pinCode,
+    timezone: z.string().trim().max(60),
+    /** A storage key from POST /api/uploads, or null to remove the logo. */
+    logoKey: z.string().max(200).nullable(),
+  })
+  .partial()
+  .refine((b) => Object.values(b).some((v) => v !== undefined), { message: 'No updatable fields provided' });
+
+// --- Vendors ---
+
+/** On duty or not. Whether they are busy is worked out from their open tickets. */
+export const VENDOR_AVAILABILITY = ['Available', 'Offline'] as const;
+
+export const createVendorBody = z.object({
+  name: text(120),
+  category: z.enum(ISSUE_CATEGORIES),
+  phone,
+  skills: z.array(text(60)).max(20).default([]),
+  availability: z.enum(VENDOR_AVAILABILITY).default('Available'),
+  avgResolutionTime: text(30).default('45 mins'),
+  /** A new vendor has no job history; this is the starting score the dispatcher uses. */
+  rating: z.number().min(1).max(5).default(4),
+});
+
+export const updateVendorBody = z
+  .object({
+    name: text(120),
+    category: z.enum(ISSUE_CATEGORIES),
+    phone,
+    skills: z.array(text(60)).max(20),
+    availability: z.enum(VENDOR_AVAILABILITY),
+    avgResolutionTime: text(30),
+    rating: z.number().min(1).max(5),
+  })
+  .partial()
+  .refine((b) => Object.values(b).some((v) => v !== undefined), { message: 'No updatable fields provided' });
+
+// --- Buildings ---
+
+export const TOWER_KINDS = ['tower', 'wing', 'block', 'lane'] as const;
+export const FLAT_TYPES = ['1RK', '1BHK', '2BHK', '3BHK', '4BHK', '5BHK', 'villa', 'shop', 'office', 'other'] as const;
+export const OCCUPANT_TYPES = ['owner', 'tenant', 'family'] as const;
+
+export const createTowerBody = z.object({
+  name: text(40),
+  kind: z.enum(TOWER_KINDS).default('tower'),
+  floors: z.number().int().min(0).max(200).optional(),
+  liftsCount: z.number().int().min(0).max(50).default(0),
+});
+
+export const updateTowerBody = z
+  .object({
+    name: text(40),
+    kind: z.enum(TOWER_KINDS),
+    floors: z.number().int().min(0).max(200).nullable(),
+    liftsCount: z.number().int().min(0).max(50),
+  })
+  .partial()
+  .refine((b) => Object.values(b).some((v) => v !== undefined), { message: 'No updatable fields provided' });
+
+export const generateFlatsBody = z
+  .object({
+    /** Defaults to the tower's name. */
+    prefix: z.string().trim().max(20).optional(),
+    separator: z.string().max(3).default('-'),
+    fromFloor: z.number().int().min(0).max(200),
+    toFloor: z.number().int().min(0).max(200),
+    perFloor: z.number().int().min(1).max(50),
+    type: z.enum(FLAT_TYPES).optional(),
+    parkingSlots: z.number().int().min(0).max(10).optional(),
+    /** Preview only: report what would be created without writing it. */
+    dryRun: z.boolean().default(false),
+  })
+  .refine((b) => b.toFloor >= b.fromFloor, { message: 'The last floor must not be below the first', path: ['toFloor'] })
+  .refine((b) => (b.toFloor - b.fromFloor + 1) * b.perFloor <= 2000, {
+    message: 'That is more than 2,000 flats; generate them in smaller batches',
+  });
+
+const flatFields = {
+  towerId: text(64).nullable(),
+  number: text(30),
+  floor: z.number().int().min(0).max(200).nullable(),
+  type: z.enum(FLAT_TYPES).nullable(),
+  carpetAreaSqft: z.number().int().min(50).max(100000).nullable(),
+  parkingSlots: z.number().int().min(0).max(10),
+};
+
+export const createFlatBody = z.object(flatFields).partial().required({ number: true });
+
+export const updateFlatBody = z
+  .object(flatFields)
+  .partial()
+  .refine((b) => Object.values(b).some((v) => v !== undefined), { message: 'No updatable fields provided' });
+
+export const listFlatsQuery = z.object({
+  towerId: z.string().max(64).optional(),
+  query: z.string().max(60).optional(),
+});
+
+export const addOccupantBody = z.object({
+  name: text(100),
+  phone,
+  type: z.enum(OCCUPANT_TYPES),
+  moveInDate: z.coerce.date().optional(),
+});
+
+export const moveOutBody = z.object({
+  moveOutDate: z.coerce.date().optional(),
+});
+
 // --- Tickets ---
 
 export const idParams = z.object({ id: text(64) });

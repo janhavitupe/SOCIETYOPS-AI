@@ -1,6 +1,7 @@
 import { ticketRepo, vendorRepo, agentLogRepo } from '../database/repositories';
 import { sendNotification } from './notifications';
 import { isOverdue } from './sla';
+import { rebalanceCategory } from './rebalance';
 
 /** Words in a complaint that mean someone may be in danger. */
 const EMERGENCY_KEYWORDS = ['stuck', 'gas', 'sewage', 'fire', 'smoke', 'trapped'];
@@ -26,6 +27,13 @@ function looksLikeEmergency(description: string): boolean {
  * POST /api/followup/run.
  */
 export async function runFollowupCycle(now: Date = new Date()): Promise<FollowupResult> {
+  // First move queued jobs to any vendor who has room, so the reminders
+  // below go to whoever is actually doing the job.
+  const vendors = await vendorRepo.findAll();
+  for (const category of new Set(vendors.map((v: { category: string }) => v.category))) {
+    await rebalanceCategory(category);
+  }
+
   const allTickets = await ticketRepo.findAll();
 
   let remindersSent = 0;
@@ -36,7 +44,7 @@ export async function runFollowupCycle(now: Date = new Date()): Promise<Followup
     if (ticket.status === 'Open') {
       const vendor = await vendorRepo.findBestForCategory(ticket.issueCategory);
       if (vendor) {
-        await ticketRepo.assignVendor(ticket.id, vendor.id, vendor.avgResolutionTime || '25 mins');
+        await ticketRepo.assignVendor(ticket.id, vendor.id);
         dispatched += 1;
       }
       continue;
