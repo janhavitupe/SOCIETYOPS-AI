@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Vendor, IssueCategory } from '../types';
-import { Star, Phone, Clock, CheckCircle, Wrench, Search, ShieldCheck } from 'lucide-react';
+import { Vendor } from '../types';
+import { Star, Phone, Clock, CheckCircle, Wrench, ShieldCheck } from 'lucide-react';
 
 interface VendorDirectoryProps {
   vendors: Vendor[];
@@ -8,27 +8,34 @@ interface VendorDirectoryProps {
   onAssignVendorToOpenTicket: (vendorId: string) => void;
 }
 
-export const VendorDirectory: React.FC<VendorDirectoryProps> = ({ vendors, isDarkMode, onAssignVendorToOpenTicket }) => {
+export const VendorDirectory: React.FC<VendorDirectoryProps> = ({
+  vendors,
+  isDarkMode,
+  onAssignVendorToOpenTicket,
+}) => {
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
-  const [searchQuery, setSearchQuery] = useState('');
 
-  const categories = ['All', 'Plumbing', 'Electrical', 'Lift & Elevator', 'Carpentry & Locks', 'AC & Appliances', 'Cleaning & Pest', 'Security & Intercom'];
+  const categories = [
+    'All',
+    'Plumbing',
+    'Electrical',
+    'Lift & Elevator',
+    'Carpentry & Locks',
+    'AC & Appliances',
+    'Cleaning & Pest',
+    'Security & Intercom',
+  ];
 
-  const filteredVendors = vendors.filter(v => {
-    const matchesCategory = selectedCategory === 'All' || v.category === selectedCategory;
-    const q = searchQuery.toLowerCase();
-    const matchesSearch = !searchQuery || v.name.toLowerCase().includes(q) || v.skills.some(s => s.toLowerCase().includes(q));
-    return matchesCategory && matchesSearch;
-  });
+  const filteredVendors = vendors.filter((v) => selectedCategory === 'All' || v.category === selectedCategory);
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-      
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 pb-2 border-b border-[#E5E5E1] dark:border-[#2D2D2A]">
         <div>
           <h1 className="text-3xl sm:text-4xl lg:text-5xl font-light uppercase tracking-tighter leading-none text-[#1A1A1A] dark:text-white">
-            Vendor<br />
+            Vendor
+            <br />
             <span className="text-[#6366F1] font-normal">Directory & SLA</span>
           </h1>
           <p className="text-xs text-[#71716A] dark:text-slate-400 mt-2 font-medium uppercase tracking-wider">
@@ -38,7 +45,7 @@ export const VendorDirectory: React.FC<VendorDirectoryProps> = ({ vendors, isDar
 
         {/* Category Pills */}
         <div className="flex items-center space-x-2 overflow-x-auto pb-1 scrollbar-none">
-          {categories.map(cat => (
+          {categories.map((cat) => (
             <button
               key={cat}
               onClick={() => setSelectedCategory(cat)}
@@ -46,8 +53,8 @@ export const VendorDirectory: React.FC<VendorDirectoryProps> = ({ vendors, isDar
                 selectedCategory === cat
                   ? 'bg-[#1A1A1A] text-white border-[#1A1A1A] dark:bg-white dark:text-[#1A1A1A]'
                   : isDarkMode
-                  ? 'bg-[#181817] border-[#2D2D2A] text-slate-300 hover:border-[#6366F1]'
-                  : 'bg-white border-[#E5E5E1] text-[#1A1A1A] hover:border-[#6366F1] shadow-2xs'
+                    ? 'bg-[#181817] border-[#2D2D2A] text-slate-300 hover:border-[#6366F1]'
+                    : 'bg-white border-[#E5E5E1] text-[#1A1A1A] hover:border-[#6366F1] shadow-2xs'
               }`}
             >
               {cat}
@@ -111,14 +118,16 @@ export const VendorDirectory: React.FC<VendorDirectoryProps> = ({ vendors, isDar
                 <span className="font-medium">Status:</span>
                 <span
                   className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-                    vendor.availability === 'Available'
+                    vendor.status === 'Available'
                       ? 'bg-[#ECFDF5] text-[#059669]'
-                      : vendor.availability === 'On Job'
-                      ? 'bg-blue-50 text-blue-700'
-                      : 'bg-slate-100 text-slate-800'
+                      : vendor.status === 'Busy'
+                        ? 'bg-amber-50 text-amber-700'
+                        : 'bg-slate-100 text-slate-800'
                   }`}
                 >
-                  {vendor.availability} ({vendor.activeJobsCount} active)
+                  {vendor.status === 'Busy'
+                    ? `Busy · ${vendor.openJobs} job${vendor.openJobs > 1 ? 's' : ''}`
+                    : vendor.status}
                 </span>
               </div>
             </div>
@@ -143,11 +152,9 @@ export const VendorDirectory: React.FC<VendorDirectoryProps> = ({ vendors, isDar
               <Wrench className="w-3.5 h-3.5" />
               <span>Dispatch for Open Ticket</span>
             </button>
-
           </div>
         ))}
       </div>
-
     </div>
   );
 };

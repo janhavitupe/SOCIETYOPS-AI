@@ -1,21 +1,15 @@
 export type UrgencyLevel = 'High' | 'Medium' | 'Low';
 
-export type TicketStatus = 
-  | 'Open' 
-  | 'Vendor Assigned' 
-  | 'In Progress' 
-  | 'Escalated' 
-  | 'Resolved' 
-  | 'Closed';
+export type TicketStatus = 'Open' | 'Vendor Assigned' | 'In Progress' | 'Escalated' | 'Resolved' | 'Closed';
 
-export type IssueCategory = 
-  | 'Plumbing' 
-  | 'Electrical' 
-  | 'Lift & Elevator' 
-  | 'Carpentry & Locks' 
-  | 'AC & Appliances' 
-  | 'Cleaning & Pest' 
-  | 'Security & Intercom' 
+export type IssueCategory =
+  | 'Plumbing'
+  | 'Electrical'
+  | 'Lift & Elevator'
+  | 'Carpentry & Locks'
+  | 'AC & Appliances'
+  | 'Cleaning & Pest'
+  | 'Security & Intercom'
   | 'General Repairs';
 
 export interface TimelineEvent {
@@ -23,7 +17,14 @@ export interface TimelineEvent {
   timestamp: string;
   title: string;
   description: string;
-  actor: 'Intake Agent' | 'Dispatcher Agent' | 'Follow-up Agent' | 'Communication Agent' | 'Resident' | 'Facility Manager' | 'Vendor';
+  actor:
+    | 'Intake Agent'
+    | 'Dispatcher Agent'
+    | 'Follow-up Agent'
+    | 'Communication Agent'
+    | 'Resident'
+    | 'Facility Manager'
+    | 'Vendor';
   type: 'created' | 'assigned' | 'status_change' | 'escalated' | 'notified' | 'note' | 'closed';
 }
 
@@ -48,9 +49,15 @@ export interface Ticket {
   societyName: string;
   lastFollowupAt?: string;
   escalationReason?: string;
+  /** Where the job stands in the assigned vendor's queue (single-ticket reads). */
+  vendorQueue?: { position: number; total: number } | null;
 }
 
-export type VendorAvailability = 'Available' | 'On Job' | 'Offline';
+/** On duty ('Available') or not; set by the manager. */
+export type VendorAvailability = 'Available' | 'Offline';
+
+/** What the vendor is doing now, from their open tickets. */
+export type VendorStatus = 'Available' | 'Busy' | 'Offline';
 
 export interface Vendor {
   id: string;
@@ -62,6 +69,10 @@ export interface Vendor {
   avgResolutionTime: string; // e.g. "45 mins"
   completedJobs: number;
   activeJobsCount: number;
+  /** Live: Busy while they have open jobs. */
+  status: VendorStatus;
+  /** Open jobs right now, counted from tickets. */
+  openJobs: number;
   skills: string[];
   societyName: string;
   avatarUrl?: string;
@@ -127,17 +138,16 @@ export interface SocietyProfile {
   updatedAt: string;
 }
 
+/** A member of the society, as GET /api/resident-profiles lists them. */
 export interface ResidentProfile {
   id: string;
   name: string;
+  phone: string | null;
+  roles: string[];
+  role: 'society_admin' | 'manager' | 'committee' | 'resident';
+  flats: string[];
   flatNumber: string;
-  role: 'resident' | 'maintenance' | 'admin';
-  phone: string;
-  email?: string;
-  status: 'active' | 'pending';
-  accessToken: string;
-  tokensGenerated: number;
-  lastActiveAt?: string;
+  status: 'invited' | 'pending' | 'active';
   createdAt: string;
 }
 

@@ -1,87 +1,65 @@
- import { Request, Response, NextFunction } from 'express';
-  import { verifyToken, JwtPayload } from './authUtils'; // <-- updated import
+import { Request, Response, NextFunction } from 'express';
+import { fromNodeHeaders } from 'better-auth/node';
+import { auth } from './auth';
+import { identityFrom, isManager, isSocietyAdmin, isStaff, resolveActor } from './actor';
+import { setRequestSociety } from '../requestContext';
 
-  export function authenticateToken(
-    req: Request,
-    res: Response,
-    next: NextFunction
-  ) {
-    const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+/**
+ * Populates req.identity for any signed-in request, and req.user (the actor)
+ * when the person belongs to a society, scoping every database query that
+ * follows to that society.
+ *
+ * A missing session is not rejected here: this runs in front of public and
+ * protected routes alike, and the guards below decide what needs what. A
+ * bearer token that is present but invalid is rejected, so a client cannot
+ * quietly downgrade itself to anonymous by sending a bad one.
+ */
+export async function authenticate(req: Request, res: Response, next: NextFunction) {
+  const session = await auth.api.getSession({ headers: fromNodeHeaders(req.headers) });
 
-    if (!token) {
-      // No token – let downstream handlers decide if auth is required.
-      return next();
+  if (!session) {
+    if (req.headers.authorization?.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Invalid or expired session' });
     }
-
-    const user = verifyToken(token);
-    if (!user) {
-      return res.status(401).json({ error: 'Invalid or expired token' });
-    }
-
-    // Attach the decoded payload (typed as JwtPayload for IntelliSense)
-    req.user = user as JwtPayload;
-    next();
-  }
-
-/**
- * Middleware to require authentication
- */
-export function requireAuth(req: Request, res: Response, next: NextFunction) {
-  if (!req.user) {
-    return res.status(401).json({ error: 'Authentication required' });
-  }
-  next();
-}
-
-/**
- * Middleware to check if user is resident
- */
-export function requireResident(req: Request, res: Response, next: NextFunction) {
-  if (!req.user) {
-    return res.status(401).json({ error: 'Authentication required' });
-  }
-  if (req.user.role !== 'resident') {
-    return res.status(403).json({ error: 'Resident access required' });
-  }
-  next();
-}
-
-/**
- * Middleware to check if user is manager/facility staff
- */
-export function requireManager(req: Request, res: Response, next: NextFunction) {
-  if (!req.user) {
-    return res.status(401).json({ error: 'Authentication required' });
-  }
-  if (req.user.role !== 'facility_manager' && req.user.role !== 'admin') {
-    return res.status(403).json({ error: 'Manager access required' });
-  }
-  next();
-}
-
-/**
- * Middleware to check if user has access to a specific ticket
- * Residents can only access tickets from their own flat
- * Managers can access any ticket
- */
-export function requireTicketAccess(req: Request, res: Response, next: NextFunction) {
-  if (!req.user) {
-    return res.status(401).json({ error: 'Authentication required' });
-  }
-
-  const ticketId = req.params.id;
-  if (!ticketId) {
-    return res.status(400).json({ error: 'Ticket ID required' });
-  }
-
-  // For managers, allow access to any ticket
-  if (req.user.role === 'facility_manager' || req.user.role === 'admin') {
     return next();
   }
 
-  // For residents, check if ticket belongs to their flat
-  // We'll need to check this in the endpoint handler after fetching the ticket
-  // This middleware just ensures authentication; the actual flat check happens in endpoint
+  req.identity = identityFrom(session);
+  const activeSocietyId = (session.session as { activeSocietyId?: string | null }).activeSocietyId;
+  const actor = await resolveActor(req.identity, activeSocietyId);
+  if (actor) {
+    req.user = actor;
+    setRequestSociety(actor.societyId);
+  }
   next();
 }
+
+/** Signed in, society or not: account setup and creating a society. */
+export function requireSignedIn(req: Request, res: Response, next: NextFunction) {
+  if (!req.identity) return res.status(401).json({ error: 'Authentication required' });
+  next();
+}
+
+/** Signed in and working inside a society. */
+export function requireAuth(req: Request, res: Response, next: NextFunction) {
+  if (!req.identity) return res.status(401).json({ error: 'Authentication required' });
+  if (!req.user) return res.status(403).json({ error: 'You are not a member of any society yet' });
+  next();
+}
+
+const guard =
+  (allowed: (actor: NonNullable<Request['user']>) => boolean, message: string) =>
+  (req: Request, res: Response, next: NextFunction) => {
+    if (!req.identity) return res.status(401).json({ error: 'Authentication required' });
+    if (!req.user || !allowed(req.user)) return res.status(403).json({ error: message });
+    next();
+  };
+
+/** Society admins, managers and committee members: whole-society reads. */
+export const requireStaff = guard(isStaff, 'Society staff access required');
+
+/** Society admins and managers: running tickets, vendors and residents. */
+export const requireManager = guard(isManager, 'Manager access required');
+
+/** Society admins only: settings, roles and billing. */
+export const requireAdmin = guard(isSocietyAdmin, 'Society admin access required');

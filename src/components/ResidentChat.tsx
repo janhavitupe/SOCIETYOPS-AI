@@ -1,6 +1,21 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Image as ImageIcon, Mic, Paperclip, Bot, User, CheckCheck, ChevronDown, ChevronUp, Clock, AlertTriangle, ShieldCheck, Sparkles, X, Wrench, PhoneCall } from 'lucide-react';
-import { ChatMessage, Ticket, AgentThoughtStep } from '../types';
+import {
+  Send,
+  Image as ImageIcon,
+  Mic,
+  Bot,
+  User,
+  CheckCheck,
+  ChevronDown,
+  ChevronUp,
+  Sparkles,
+  X,
+  Wrench,
+} from 'lucide-react';
+import { ChatMessage, Ticket } from '../types';
+import { api, ApiError } from '../lib/api';
+import { useAuth } from '../context/AuthContext';
+import { uploadPhoto, photoProblem } from '../lib/uploads';
 
 interface ResidentChatProps {
   onTicketSelect: (ticket: Ticket) => void;
@@ -11,7 +26,7 @@ interface ResidentChatProps {
 const PRESET_HINGLISH_PROMPTS = [
   {
     label: 'Flush Leakage',
-    text: 'Bhaiya B-402 mein master bathroom ka flush pipe leak ho raha h, paani floor par bhar gaya h urgent please!',
+    text: 'Bhaiya master bathroom ka flush pipe leak ho raha h, paani floor par bhar gaya h urgent please!',
   },
   {
     label: 'Lift Stuck Emergency',
@@ -38,10 +53,13 @@ export const ResidentChat: React.FC<ResidentChatProps> = ({ onTicketSelect, isDa
   ]);
 
   const [inputMessage, setInputMessage] = useState('');
-  const [selectedFlat, setSelectedFlat] = useState('B-402');
-  const [residentName, setResidentName] = useState('Vikram Mehta');
+  // Who is talking comes from the session; the server ignores any other claim.
+  const { user } = useAuth();
+  const residentName = user?.name ?? '';
+  const selectedFlat = user?.flatNumber || 'No flat';
   const [isLoading, setIsLoading] = useState(false);
-  const [attachedImage, setAttachedImage] = useState<string | null>(null);
+  // The file is uploaded on send; preview is an object URL for display only.
+  const [attachedImage, setAttachedImage] = useState<{ file: File; preview: string } | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [openThoughtId, setOpenThoughtId] = useState<string | null>(null);
 
@@ -67,28 +85,24 @@ export const ResidentChat: React.FC<ResidentChatProps> = ({ onTicketSelect, isDa
       sender: 'user',
       text,
       timestamp: nowStr,
-      images: attachedImage ? [attachedImage] : undefined,
+      images: attachedImage ? [attachedImage.preview] : undefined,
     };
 
-    setMessages(prev => [...prev, newMsg]);
+    setMessages((prev) => [...prev, newMsg]);
     setInputMessage('');
     const currentImage = attachedImage;
     setAttachedImage(null);
     setIsLoading(true);
 
     try {
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text,
-          flatNumber: selectedFlat,
-          residentName,
-          images: currentImage ? [currentImage] : [],
-        }),
-      });
+      const images = currentImage ? [await uploadPhoto(currentImage.file)] : [];
 
-      const data = await response.json();
+      // flatNumber and residentName are no longer sent: the server takes the
+      // caller's identity from their token, so a client cannot post as someone else.
+      const data = await api('/api/chat', {
+        method: 'POST',
+        body: JSON.stringify({ text, images }),
+      });
 
       const aiMsg: ChatMessage = {
         id: `MSG-${Date.now() + 1}`,
@@ -99,7 +113,7 @@ export const ResidentChat: React.FC<ResidentChatProps> = ({ onTicketSelect, isDa
         ticketCreated: data.ticketCreated,
       };
 
-      setMessages(prev => [...prev, aiMsg]);
+      setMessages((prev) => [...prev, aiMsg]);
       if (data.ticketCreated) {
         onRefreshTickets();
       }
@@ -124,13 +138,16 @@ export const ResidentChat: React.FC<ResidentChatProps> = ({ onTicketSelect, isDa
       }
     } catch (err) {
       console.error('Failed to send chat message:', err);
+      // This used to tell the resident their request had been processed, when it
+      // had not reached the server at all.
+      const reason = err instanceof ApiError && err.status < 500 ? ` ${err.message}.` : '';
       const errorMsg: ChatMessage = {
         id: `MSG-${Date.now() + 2}`,
-        sender: 'agent',
-        text: 'Aapki request process ho gayi hai. Ticket details dashboard mein update ho gayi h.',
+        sender: 'system',
+        text: `Your message could not be sent.${reason} Please try again.`,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
-      setMessages(prev => [...prev, errorMsg]);
+      setMessages((prev) => [...prev, errorMsg]);
     } finally {
       setIsLoading(false);
     }
@@ -138,13 +155,15 @@ export const ResidentChat: React.FC<ResidentChatProps> = ({ onTicketSelect, isDa
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setAttachedImage(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+    e.target.value = '';
+    if (!file) return;
+
+    const problem = photoProblem(file);
+    if (problem) {
+      alert(problem);
+      return;
     }
+    setAttachedImage({ file, preview: URL.createObjectURL(file) });
   };
 
   const toggleRecording = () => {
@@ -194,38 +213,29 @@ export const ResidentChat: React.FC<ResidentChatProps> = ({ onTicketSelect, isDa
 
   return (
     <div className="max-w-4xl mx-auto flex flex-col h-[calc(100vh-5rem)] py-4 px-2 sm:px-4 space-y-3">
-      
       {/* Top Controls & Persona Selector */}
-      <div className={`p-3.5 rounded-lg border flex flex-wrap items-center justify-between gap-2 shadow-2xs ${isDarkMode ? 'bg-[#181817] border-[#2D2D2A]' : 'bg-white border-[#E5E5E1]'}`}>
+      <div
+        className={`p-3.5 rounded-lg border flex flex-wrap items-center justify-between gap-2 shadow-2xs ${isDarkMode ? 'bg-[#181817] border-[#2D2D2A]' : 'bg-white border-[#E5E5E1]'}`}
+      >
         <div className="flex items-center space-x-2.5">
           <div className="w-7 h-7 rounded bg-black text-white flex items-center justify-center font-mono font-bold text-xs shadow-2xs">
             SO
           </div>
           <div>
-            <h2 className="text-xs font-bold uppercase tracking-wider text-[#1A1A1A] dark:text-white">Resident Interaction Desk</h2>
+            <h2 className="text-xs font-bold uppercase tracking-wider text-[#1A1A1A] dark:text-white">
+              Resident Interaction Desk
+            </h2>
             <p className="text-[11px] text-[#71716A] dark:text-slate-400">Autonomous Complaint Intake & Dispatch</p>
           </div>
         </div>
 
-        {/* Resident Identity Picker */}
+        {/* Who is reporting. It used to be a picker that pretended to switch
+            residents; the server always takes identity from the session. */}
         <div className="flex items-center space-x-2 text-xs">
-          <span className="text-[#888888] font-bold text-[10px] uppercase tracking-wider">Unit & Resident:</span>
-          <select
-            value={`${residentName}|${selectedFlat}`}
-            onChange={(e) => {
-              const [rName, rFlat] = e.target.value.split('|');
-              setResidentName(rName);
-              setSelectedFlat(rFlat);
-            }}
-            className={`px-2.5 py-1 rounded border text-xs font-bold outline-none transition-colors ${
-              isDarkMode ? 'bg-[#222220] border-[#2D2D2A] text-white' : 'bg-[#FAFAF9] border-[#E5E5E1] text-[#1A1A1A]'
-            }`}
-          >
-            <option value="Vikram Mehta|B-402">Vikram Mehta (Block B-402)</option>
-            <option value="Mrs. Ananya Sharma|A-101">Ananya Sharma (Block A-101)</option>
-            <option value="Sanjay Kapoor|A-305">Sanjay Kapoor (Block A-305)</option>
-            <option value="Security Guard Rakesh|Tower B">Security Guard Rakesh (Tower B)</option>
-          </select>
+          <span className="text-[#888888] font-bold text-[10px] uppercase tracking-wider">Reporting as:</span>
+          <span className="font-bold text-[#1A1A1A] dark:text-white">
+            {residentName} ({selectedFlat})
+          </span>
         </div>
       </div>
 
@@ -253,9 +263,7 @@ export const ResidentChat: React.FC<ResidentChatProps> = ({ onTicketSelect, isDa
       {/* Editorial Chat Canvas */}
       <div
         className={`flex-1 rounded-lg border p-4 overflow-y-auto flex flex-col space-y-4 shadow-2xs ${
-          isDarkMode
-            ? 'bg-[#121211] border-[#2D2D2A] text-slate-100'
-            : 'bg-[#FAFAF9] border-[#E5E5E1] text-[#1A1A1A]'
+          isDarkMode ? 'bg-[#121211] border-[#2D2D2A] text-slate-100' : 'bg-[#FAFAF9] border-[#E5E5E1] text-[#1A1A1A]'
         }`}
       >
         {messages.map((msg) => {
@@ -265,7 +273,6 @@ export const ResidentChat: React.FC<ResidentChatProps> = ({ onTicketSelect, isDa
 
           return (
             <div key={msg.id} className={`flex flex-col ${isUser ? 'items-end' : 'items-start'}`}>
-              
               {/* Message Bubble */}
               <div
                 className={`max-w-[85%] sm:max-w-[78%] rounded-xl p-3.5 shadow-2xs text-xs sm:text-sm leading-relaxed ${
@@ -275,12 +282,16 @@ export const ResidentChat: React.FC<ResidentChatProps> = ({ onTicketSelect, isDa
                 }`}
               >
                 {/* Header Icon */}
-                <div className={`flex items-center justify-between mb-1.5 text-[10px] font-bold uppercase tracking-wider ${isUser ? 'text-[#71716A] dark:text-slate-400' : 'text-indigo-100'}`}>
+                <div
+                  className={`flex items-center justify-between mb-1.5 text-[10px] font-bold uppercase tracking-wider ${isUser ? 'text-[#71716A] dark:text-slate-400' : 'text-indigo-100'}`}
+                >
                   <span className="flex items-center space-x-1">
                     {isUser ? (
                       <>
                         <User className="w-3 h-3" />
-                        <span>{residentName} ({selectedFlat})</span>
+                        <span>
+                          {residentName} ({selectedFlat})
+                        </span>
                       </>
                     ) : (
                       <>
@@ -330,7 +341,9 @@ export const ResidentChat: React.FC<ResidentChatProps> = ({ onTicketSelect, isDa
                       </div>
                       <div className="flex justify-between">
                         <span className="text-[#888888] font-bold text-[10px] uppercase">Assigned Vendor:</span>
-                        <span className="font-semibold">{msg.ticketCreated.assignedVendorName || 'Dispatching...'}</span>
+                        <span className="font-semibold">
+                          {msg.ticketCreated.assignedVendorName || 'Dispatching...'}
+                        </span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-[#888888] font-bold text-[10px] uppercase">Estimated ETA:</span>
@@ -355,7 +368,11 @@ export const ResidentChat: React.FC<ResidentChatProps> = ({ onTicketSelect, isDa
                         <Sparkles className="w-3 h-3 text-amber-300" />
                         <span>Execution Audit Log ({msg.thoughtSteps?.length})</span>
                       </span>
-                      {isThoughtExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                      {isThoughtExpanded ? (
+                        <ChevronUp className="w-3.5 h-3.5" />
+                      ) : (
+                        <ChevronDown className="w-3.5 h-3.5" />
+                      )}
                     </button>
 
                     {isThoughtExpanded && (
@@ -385,7 +402,6 @@ export const ResidentChat: React.FC<ResidentChatProps> = ({ onTicketSelect, isDa
                   <CheckCheck className="w-3.5 h-3.5" />
                 </div>
               </div>
-
             </div>
           );
         })}
@@ -394,7 +410,9 @@ export const ResidentChat: React.FC<ResidentChatProps> = ({ onTicketSelect, isDa
         {isLoading && (
           <div className="flex items-center space-x-2 p-3 bg-white dark:bg-[#181817] rounded-lg max-w-[220px] border border-[#E5E5E1] dark:border-[#2D2D2A]">
             <Bot className="w-4 h-4 text-[#6366F1] animate-spin" />
-            <span className="text-xs text-[#71716A] font-semibold uppercase tracking-wider animate-pulse">Agents Coordinating...</span>
+            <span className="text-xs text-[#71716A] font-semibold uppercase tracking-wider animate-pulse">
+              Agents Coordinating...
+            </span>
           </div>
         )}
 
@@ -404,20 +422,31 @@ export const ResidentChat: React.FC<ResidentChatProps> = ({ onTicketSelect, isDa
       {/* Agent Status Indicators */}
       <div className="flex items-center justify-between px-2 text-[10px] font-bold uppercase tracking-wider text-[#888888]">
         <div className="flex items-center space-x-4">
-          <span className="flex items-center"><span className="w-1.5 h-1.5 rounded-full bg-[#10B981] mr-1.5"></span> Intake Agent</span>
-          <span className="flex items-center"><span className="w-1.5 h-1.5 rounded-full bg-[#10B981] mr-1.5"></span> Dispatch Agent</span>
-          <span className="flex items-center"><span className="w-1.5 h-1.5 rounded-full bg-[#10B981] mr-1.5"></span> Follow-up Agent</span>
+          <span className="flex items-center">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#10B981] mr-1.5"></span> Intake Agent
+          </span>
+          <span className="flex items-center">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#10B981] mr-1.5"></span> Dispatch Agent
+          </span>
+          <span className="flex items-center">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#10B981] mr-1.5"></span> Follow-up Agent
+          </span>
         </div>
         <span className="hidden sm:inline">WhatsApp Gateway Connected</span>
       </div>
 
       {/* Input Box Controls */}
-      <div className={`p-3 rounded-lg border shadow-2xs ${isDarkMode ? 'bg-[#181817] border-[#2D2D2A]' : 'bg-white border-[#E5E5E1]'}`}>
-        
+      <div
+        className={`p-3 rounded-lg border shadow-2xs ${isDarkMode ? 'bg-[#181817] border-[#2D2D2A]' : 'bg-white border-[#E5E5E1]'}`}
+      >
         {/* Attached image preview */}
         {attachedImage && (
           <div className="mb-2 relative inline-block">
-            <img src={attachedImage} alt="Attachment" className="w-16 h-16 object-cover rounded border border-[#E5E5E1]" />
+            <img
+              src={attachedImage.preview}
+              alt="Attachment"
+              className="w-16 h-16 object-cover rounded border border-[#E5E5E1]"
+            />
             <button
               onClick={() => setAttachedImage(null)}
               className="absolute -top-2 -right-2 bg-[#EF4444] text-white rounded-full p-0.5"
@@ -428,7 +457,6 @@ export const ResidentChat: React.FC<ResidentChatProps> = ({ onTicketSelect, isDa
         )}
 
         <div className="flex items-center space-x-2">
-          
           {/* Photo attachment input */}
           <label className="p-2 rounded text-[#71716A] hover:text-[#1A1A1A] dark:hover:text-white hover:bg-[#F0F0EE] dark:hover:bg-[#222220] cursor-pointer transition-colors">
             <ImageIcon className="w-4 h-4" />
@@ -472,10 +500,8 @@ export const ResidentChat: React.FC<ResidentChatProps> = ({ onTicketSelect, isDa
             <Send className="w-3.5 h-3.5 mr-1" />
             <span className="hidden sm:inline uppercase tracking-wider text-[10px]">Send</span>
           </button>
-
         </div>
       </div>
-
     </div>
   );
 };

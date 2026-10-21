@@ -1,10 +1,90 @@
-@import "tailwindcss";
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+/*
+ * Dark mode follows the app's own toggle (a "dark" class on <html>, set by
+ * AppShell), not the operating system. When the two disagreed, dialogs drew a
+ * dark background under the page's dark text.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * shadcn/ui theme tokens (src/components/ui), set to the app's existing
+ * palette so new components sit alongside the hand-styled ones.
+ */
+:root {
+  --radius: 0.5rem;
+  --background: #f8f8f7;
+  --foreground: #1a1a1a;
+  --card: #ffffff;
+  --card-foreground: #1a1a1a;
+  --popover: #ffffff;
+  --popover-foreground: #1a1a1a;
+  --primary: #6366f1;
+  --primary-foreground: #ffffff;
+  --secondary: #f0f0ee;
+  --secondary-foreground: #1a1a1a;
+  --muted: #f0f0ee;
+  --muted-foreground: #71716a;
+  --accent: #f0f0ee;
+  --accent-foreground: #1a1a1a;
+  --destructive: #dc2626;
+  --border: #e5e5e1;
+  --input: #e5e5e1;
+  --ring: #6366f1;
+}
+
+.dark {
+  --background: #0f0f0e;
+  --foreground: #f1f5f9;
+  --card: #181817;
+  --card-foreground: #f1f5f9;
+  --popover: #181817;
+  --popover-foreground: #f1f5f9;
+  --primary: #818cf8;
+  --primary-foreground: #0f0f0e;
+  --secondary: #222220;
+  --secondary-foreground: #f1f5f9;
+  --muted: #222220;
+  --muted-foreground: #a1a19a;
+  --accent: #222220;
+  --accent-foreground: #f1f5f9;
+  --destructive: #ef4444;
+  --border: #2d2d2a;
+  --input: #2d2d2a;
+  --ring: #818cf8;
+}
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+}
 
 @layer base {
   body {
-    background-color: #F8F8F7;
-    color: #1A1A1A;
-    font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
   }
 }
 
@@ -20,18 +100,18 @@
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  color: #71716A;
+  color: #71716a;
   font-weight: 600;
 }
 
 .editorial-card {
-  background-color: #FFFFFF;
-  border: 1px solid #E5E5E1;
+  background-color: #ffffff;
+  border: 1px solid #e5e5e1;
 }
 
 .dark .editorial-card {
   background-color: #181817;
-  border-color: #2D2D2A;
+  border-color: #2d2d2a;
 }
 
 /* Custom scrollbar for editorial feel */
@@ -43,9 +123,9 @@
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #D1D1CB;
+  background: #d1d1cb;
   border-radius: 3px;
 }
-.dark ::webkit-scrollbar-thumb {
+.dark ::-webkit-scrollbar-thumb {
   background: #383834;
 }

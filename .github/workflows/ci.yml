@@ -1,0 +1,101 @@
+name: CI
+
+on:
+  push:
+    branches: [main, security-update]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    # The API tests run against a real PostgreSQL rather than a mock, because
+    # the bugs they guard against (flat scoping, id generation, soft deletes)
+    # only appear in the query layer.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: societyops
+          POSTGRES_PASSWORD: societyops_dev
+          POSTGRES_DB: societyops
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U societyops -d societyops"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://societyops:societyops_dev@localhost:5432/societyops?schema=public
+      BETTER_AUTH_SECRET: ci-only-secret-never-used-outside-this-runner-at-least-32-chars
+      NODE_OPTIONS: --max-old-space-size=4096
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Formatting
+        run: npm run format:check
+
+      - name: Apply migrations
+        run: npx prisma migrate deploy
+
+      - name: Seed demo data
+        run: npx prisma db seed
+
+      - name: Test
+        run: npm test
+
+      - name: Production build
+        run: npm run build
+
+  # Builds the image and boots it against an empty database: proves the
+  # Dockerfile, the production-only install and migrate-on-start all work.
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t societyops-ai:ci .
+
+      - name: Start the stack
+        run: |
+          docker network create ci
+          docker run -d --name db --network ci \
+            -e POSTGRES_USER=societyops -e POSTGRES_PASSWORD=ci -e POSTGRES_DB=societyops \
+            postgres:16-alpine
+          until docker exec db pg_isready -U societyops -d societyops; do sleep 1; done
+          docker run -d --name app --network ci -p 3000:3000 \
+            -e DATABASE_URL=postgresql://societyops:ci@db:5432/societyops?schema=public \
+            -e BETTER_AUTH_SECRET=ci-only-secret-never-used-outside-this-runner-at-least-32-chars \
+            societyops-ai:ci
+
+      - name: Health check
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:3000/api/health; then exit 0; fi
+            sleep 2
+          done
+          docker logs app
+          exit 1
+
+      - name: Serves the app
+        run: curl -fsS http://localhost:3000/login | grep -q '<div id="root">'

@@ -9,3 +9,7 @@ coverage/
 
 # Kilo Code extension workspace (contains node_modules)
 .kilo/
+
+# Local photo storage (services/storage, local driver)
+uploads/
+.test-uploads/
