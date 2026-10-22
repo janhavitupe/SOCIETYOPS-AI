@@ -60,6 +60,8 @@ model Membership {
   role      String
   /// invited | pending | active | removed
   status    String   @default("active")
+  /// When a manager last sent this person a message asking them onto the app.
+  lastInvitedAt DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -411,8 +413,9 @@ model NotificationLog {
   id            String   @id @default(cuid())
   societyId     String
   society       Society  @relation(fields: [societyId], references: [id], onDelete: Cascade)
-  ticketId      String
-  ticket        Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  /// The ticket it is about; empty for messages that are not, like an invite to the app.
+  ticketId      String?
+  ticket        Ticket?  @relation(fields: [ticketId], references: [id], onDelete: Cascade)
   recipientType String
   recipientName String
   phone         String
@@ -426,10 +429,15 @@ model NotificationLog {
   provider          String?
   providerMessageId String?
   failureReason     String?
+  /// The person it was for, so they see it in the app as well as on their phone.
+  recipientUserId   String?
+  /// When that person opened it in the app.
+  readAt            DateTime?
   deletedAt     DateTime?
 
   @@index([societyId])
   @@index([ticketId])
+  @@index([recipientUserId, timestamp])
 }
 
 model AgentActivityLog {
@@ -459,6 +467,8 @@ model ChatMessage {
   residentId String
   role       String
   text       String
+  /// The ticket this reply created or joined, so the chat can show it again after a reload.
+  ticketId   String?
   createdAt  DateTime @default(now())
 
   @@index([societyId, residentId, createdAt])

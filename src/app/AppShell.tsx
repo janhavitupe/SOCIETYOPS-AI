@@ -4,6 +4,7 @@ import { NavigationHeader } from '@/components/NavigationHeader';
 import { TicketDetailModal } from '@/components/TicketDetailModal';
 import { AnalyticsReportModal } from '@/components/AnalyticsReportModal';
 import { NotificationsDrawer } from '@/components/NotificationsDrawer';
+import { InboxDrawer, useInbox } from '@/components/InboxDrawer';
 import { useAuth } from '@/context/AuthContext';
 import type { Ticket } from '@/types';
 import { useNotifications, useSocietyProfile, useTicket, useTicketActions, useVendors } from './queries';
@@ -23,7 +24,7 @@ export function useShell(): ShellContextValue {
   return value;
 }
 
-type Tab = 'resident' | 'manager' | 'vendors' | 'buildings' | 'jobs';
+type Tab = 'resident' | 'manager' | 'vendors' | 'buildings' | 'residents' | 'jobs';
 
 const TAB_PATHS: Record<Tab, string> = {
   jobs: '/worker',
@@ -31,12 +32,14 @@ const TAB_PATHS: Record<Tab, string> = {
   manager: '/manager',
   vendors: '/manager/vendors',
   buildings: '/manager/buildings',
+  residents: '/manager/residents',
 };
 
 function tabFor(pathname: string): Tab {
   if (pathname.startsWith('/worker')) return 'jobs';
   if (pathname.startsWith('/manager/vendors')) return 'vendors';
   if (pathname.startsWith('/manager/buildings')) return 'buildings';
+  if (pathname.startsWith('/manager/residents')) return 'residents';
   if (pathname.startsWith('/manager')) return 'manager';
   return 'resident';
 }
@@ -73,6 +76,8 @@ export function AppShell() {
     return () => document.documentElement.classList.remove('dark');
   }, [isDarkMode]);
   const [isNotifsOpen, setIsNotifsOpen] = useState(false);
+  const [isInboxOpen, setIsInboxOpen] = useState(false);
+  const inbox = useInbox(!isManager);
   const [isReportOpen, setIsReportOpen] = useState(false);
 
   const societyProfile = useSocietyProfile();
@@ -106,6 +111,8 @@ export function AppShell() {
           onRunFollowupCycle={() => actions.runFollowup.mutate()}
           isFollowupRunning={actions.runFollowup.isPending}
           user={user}
+          inboxUnread={inbox.data?.unread ?? 0}
+          onOpenInbox={() => setIsInboxOpen(true)}
         />
 
         <main className="pb-12">
@@ -123,6 +130,15 @@ export function AppShell() {
           onEscalateTicket={(ticketId, reason) => actions.escalate.mutate({ ticketId, reason })}
           onCloseTicket={(ticketId) => actions.close.mutate({ ticketId })}
         />
+
+        {!isManager && (
+          <InboxDrawer
+            isOpen={isInboxOpen}
+            onClose={() => setIsInboxOpen(false)}
+            items={inbox.data?.notifications ?? []}
+            onOpenTicket={(id) => (user?.role === 'worker' ? navigate({ to: '/worker' }) : setOpenTicketId(id))}
+          />
+        )}
 
         {isManager && (
           <>

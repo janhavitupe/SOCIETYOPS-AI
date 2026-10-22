@@ -6,6 +6,7 @@ import { IssueCategory, UrgencyLevel, TicketStatus } from '../types';
 import { buildDailyReport } from '../services/analytics';
 import { canActOnTicket, canSeeTicket, isManager as isManagerActor, isStaff, type Actor } from '../auth/actor';
 import { fileTicket } from '../services/filing';
+import { assignVendor } from '../services/assignment';
 import { afterTicketChange } from '../services/rebalance';
 import { closeRefusal, escalateRefusal } from '../services/ticketRules';
 
@@ -316,7 +317,7 @@ export async function executeToolCall(name: string, args: any, actor: ToolActor)
 
     case 'assign_vendor': {
       if (!isManager) return denied('Only maintenance staff can assign a vendor');
-      const ticket = await ticketRepo.assignVendor(args.ticketId, args.vendorId, args.estimatedEta || undefined);
+      const ticket = await assignVendor(args.ticketId, args.vendorId, args.estimatedEta || undefined);
       return { success: !!ticket, ticket };
     }
 

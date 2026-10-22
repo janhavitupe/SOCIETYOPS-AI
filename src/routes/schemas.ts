@@ -368,3 +368,15 @@ export const updateAssetBody = z
   })
   .partial()
   .refine((b) => Object.values(b).some((v) => v !== undefined), { message: 'No updatable fields provided' });
+
+// --- Resident directory ---
+
+export const listResidentsQuery = z.object({
+  towerId: z.string().max(64).optional(),
+  status: z.enum(['current', 'all', 'on_app', 'not_joined', 'moved_out']).optional(),
+  query: z.string().max(60).optional(),
+});
+
+export const inviteResidentsBody = z.object({
+  userIds: z.array(text(64)).min(1, 'Choose at least one resident').max(1000),
+});

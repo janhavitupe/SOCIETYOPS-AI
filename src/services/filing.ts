@@ -3,6 +3,7 @@ import { ticketRepo, vendorRepo } from '../database/repositories';
 import { isManager, type Actor } from '../auth/actor';
 import { resolveTicketLocation, type Location, type LocationInput } from './ticketLocation';
 import { OPEN_WORK_STATUSES } from './dispatch';
+import { assignVendor } from './assignment';
 
 /**
  * Filing a ticket, for the REST route and the agent alike: where it is, whether
@@ -119,7 +120,7 @@ export async function fileTicket(actor: Actor, input: FilingInput): Promise<Fili
   });
 
   const vendor = await vendorFor(location, created.issueCategory);
-  if (vendor) await ticketRepo.assignVendor(created.id, vendor.id);
+  if (vendor) await assignVendor(created.id, vendor.id);
 
   return {
     ticket: (await ticketRepo.findById(created.id)) ?? created,

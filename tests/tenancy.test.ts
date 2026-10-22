@@ -379,6 +379,10 @@ describe('coverage', () => {
     'GET /api/flats/:id/occupants',
     'POST /api/flats/:id/occupants',
     'POST /api/occupants/:id/move-out',
+    // The register as CSV: everything inside the caller's society (flatRegister.test.ts).
+    'GET /api/flats/template.csv',
+    'GET /api/flats/export.csv',
+    'POST /api/flats/import',
     // Joining and invites: cross-society attempts in joining.test.ts.
     'GET /api/join/:code', // public; shows flat numbers only, never occupants
     'POST /api/join/:code',
@@ -404,6 +408,13 @@ describe('coverage', () => {
     'POST /api/worker/jobs/:id/status',
     'PUT /api/worker/duty',
     'GET /api/notifications',
+    // The resident directory: other societies in residents.test.ts.
+    'GET /api/residents',
+    'POST /api/residents/invite',
+    // A person's own notifications only (inbox.test.ts).
+    'GET /api/me/notifications',
+    'POST /api/me/notifications/read',
+    'GET /api/chat/history', // the caller's own conversation only (inbox.test.ts)
     'GET /api/logs',
     'GET /api/analytics',
     'GET /api/society-profile',

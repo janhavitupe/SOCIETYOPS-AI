@@ -1,7 +1,7 @@
 import type { Db } from '../prisma';
 import { requireSocietyId } from '../../requestContext';
 export interface NotificationData {
-  ticketId: string;
+  ticketId: string | null;
   recipientType: string;
   recipientName: string;
   phone: string;
@@ -12,6 +12,7 @@ export interface NotificationData {
   provider?: string;
   providerMessageId?: string;
   failureReason?: string;
+  recipientUserId?: string | null;
 }
 
 export class NotificationRepository {

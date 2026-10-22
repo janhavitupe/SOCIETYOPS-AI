@@ -19,8 +19,21 @@ export class ChatMessageRepository {
     return rows.reverse().map((r) => ({ role: r.role === 'model' ? 'model' : 'user', text: r.text }));
   }
 
-  async append(residentId: string, role: ChatRole, text: string): Promise<void> {
-    await this.prisma.chatMessage.create({ data: { societyId: requireSocietyId(), residentId, role, text } });
+  async append(residentId: string, role: ChatRole, text: string, ticketId?: string): Promise<void> {
+    await this.prisma.chatMessage.create({
+      data: { societyId: requireSocietyId(), residentId, role, text, ticketId: ticketId ?? null },
+    });
+  }
+
+  /** The conversation as the person saw it, oldest first, for showing again after a reload. */
+  async history(residentId: string, limit = 60) {
+    const rows = await this.prisma.chatMessage.findMany({
+      where: { residentId },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      select: { id: true, role: true, text: true, ticketId: true, createdAt: true },
+    });
+    return rows.reverse();
   }
 
   async clear(residentId: string): Promise<number> {

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Building2, Plus, Trash2, Users, Wand2 } from 'lucide-react';
+import { Building2, FileSpreadsheet, Plus, Trash2, Users, Wand2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -26,6 +26,7 @@ import {
 import { FormError } from './AuthPages';
 import { InviteLinkBox, JoinRequestsCard } from '../JoinWidgets';
 import { CommonAreasCard } from '../CommonAreasCard';
+import { RegisterImportDialog } from '../RegisterImportDialog';
 import { useJoinActions, type Invite } from '../joinQueries';
 
 const FLAT_TYPES = ['1RK', '1BHK', '2BHK', '3BHK', '4BHK', '5BHK', 'villa', 'shop', 'office', 'other'];
@@ -39,6 +40,7 @@ export function BuildingsPage() {
   const towers = useTowers();
   const [towerId, setTowerId] = useState<string | undefined>();
   const [addingTower, setAddingTower] = useState(false);
+  const [importing, setImporting] = useState(false);
 
   // Select the first tower once they load, and keep a valid selection after deletes.
   useEffect(() => {
@@ -57,9 +59,14 @@ export function BuildingsPage() {
             Towers, their flats and who lives in each one, and the common areas and assets everyone shares.
           </p>
         </div>
-        <Button onClick={() => setAddingTower(true)}>
-          <Plus /> Add tower or wing
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={() => setImporting(true)}>
+            <FileSpreadsheet /> Import / export
+          </Button>
+          <Button onClick={() => setAddingTower(true)}>
+            <Plus /> Add tower or wing
+          </Button>
+        </div>
       </div>
 
       <JoinRequestsCard />
@@ -67,7 +74,7 @@ export function BuildingsPage() {
       {towers.data && towers.data.length === 0 ? (
         <Card>
           <CardContent className="py-10 text-center text-sm text-muted-foreground">
-            No buildings yet. Add your first tower, wing, block or lane to start adding flats.
+            No buildings yet. Add your first tower, wing, block or lane, or import your flat register from Excel.
           </CardContent>
         </Card>
       ) : (
@@ -97,6 +104,7 @@ export function BuildingsPage() {
       <CommonAreasCard />
 
       <AddTowerDialog open={addingTower} onOpenChange={setAddingTower} onAdded={setTowerId} />
+      <RegisterImportDialog open={importing} onOpenChange={setImporting} />
     </div>
   );
 }
@@ -590,7 +598,7 @@ function OccupantsDialog({ flat, onClose }: { flat: Flat | null; onClose: () => 
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reset when a different flat opens
   }, [flat?.id]);
 
-  const current = occupants.data?.filter((o) => o.status === 'active' || o.status === 'pending') ?? [];
+  const current = occupants.data?.filter((o) => o.status === 'active') ?? [];
   const past = occupants.data?.filter((o) => o.status === 'ended') ?? [];
 
   const add = (e: React.FormEvent) => {

@@ -25,6 +25,9 @@ export const isPlaceholderEmail = (email: string) => email.endsWith('@users.soci
 
 const BCRYPT_ROUNDS = Number(process.env.BCRYPT_SALT_ROUNDS) || 12;
 
+/** Where the app is served, for links in messages as well as auth. */
+export const APP_ORIGIN = firstUrl(process.env.BETTER_AUTH_URL, process.env.APP_URL) ?? 'http://localhost:3000';
+
 /** The first value that parses as a URL; placeholders like "MY_APP_URL" are skipped. */
 function firstUrl(...values: (string | undefined)[]): string | undefined {
   return values.find((v) => {
@@ -46,7 +49,7 @@ export const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:
 export const auth = betterAuth({
   appName: 'SocietyOps AI',
   basePath: '/api/auth',
-  baseURL: firstUrl(process.env.BETTER_AUTH_URL, process.env.APP_URL) ?? 'http://localhost:3000',
+  baseURL: APP_ORIGIN,
   secret: SERVER_SECRET,
   trustedOrigins: allowedOrigins,
   database: prismaAdapter(unscopedPrisma, { provider: 'postgresql' }),

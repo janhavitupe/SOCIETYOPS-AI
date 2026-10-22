@@ -55,7 +55,8 @@ export async function addOccupant(flatId: string, input: NewOccupant, approvedBy
   const alreadyHere = await prisma.flatOccupant.findFirst({
     where: { flatId, userId: user.id, status: { in: ['active', 'pending'] } },
   });
-  if (alreadyHere) throw new OccupantError(409, `${user.name} is already registered in ${flat.number}`);
+  if (alreadyHere?.status === 'active')
+    throw new OccupantError(409, `${user.name} is already registered in ${flat.number}`);
 
   // Re-activates a resident membership ended by an earlier move-out.
   await unscopedPrisma.membership.upsert({
@@ -64,17 +65,23 @@ export async function addOccupant(flatId: string, input: NewOccupant, approvedBy
     update: { status: 'active' },
   });
 
-  const occupant = await prisma.flatOccupant.create({
-    data: {
-      societyId,
-      flatId,
-      userId: user.id,
-      type: input.type,
-      status: 'active',
-      moveInDate: input.moveInDate ?? new Date(),
-      approvedById,
-    },
-  });
+  // A manager adding someone who had asked to join this flat approves the request.
+  const occupant = alreadyHere
+    ? await prisma.flatOccupant.update({
+        where: { id: alreadyHere.id },
+        data: { type: input.type, status: 'active', moveInDate: input.moveInDate ?? new Date(), approvedById },
+      })
+    : await prisma.flatOccupant.create({
+        data: {
+          societyId,
+          flatId,
+          userId: user.id,
+          type: input.type,
+          status: 'active',
+          moveInDate: input.moveInDate ?? new Date(),
+          approvedById,
+        },
+      });
 
   return { occupant, user, isNewAccount };
 }

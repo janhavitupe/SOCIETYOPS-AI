@@ -65,6 +65,37 @@ export const ResidentChat: React.FC<ResidentChatProps> = ({ onTicketSelect, isDa
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // The conversation is kept on the server; a reload used to wipe it from the screen.
+  useEffect(() => {
+    let cancelled = false;
+    api<{ messages: { id: string; role: 'user' | 'model'; text: string; createdAt: string; ticket: Ticket | null }[] }>(
+      '/api/chat/history',
+    )
+      .then(({ messages: past }) => {
+        if (cancelled || !past.length) return;
+        const earlier: ChatMessage[] = past.map((m) => ({
+          id: m.id,
+          sender: m.role === 'user' ? 'user' : 'agent',
+          text: m.text,
+          timestamp: new Date(m.createdAt).toLocaleString([], {
+            day: 'numeric',
+            month: 'short',
+            hour: '2-digit',
+            minute: '2-digit',
+          }),
+          ticketCreated: m.ticket ?? undefined,
+        }));
+        // Anything typed while history loaded stays after it.
+        setMessages((current) => [current[0], ...earlier, ...current.slice(1)]);
+      })
+      .catch(() => {
+        // Without history the chat still works; it just starts fresh.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };

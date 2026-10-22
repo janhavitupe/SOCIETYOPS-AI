@@ -95,7 +95,7 @@ export interface UserProfile {
 
 export interface NotificationLog {
   id: string;
-  ticketId: string;
+  ticketId: string | null;
   recipientType: 'resident' | 'vendor' | 'facility_manager';
   recipientName: string;
   phone: string;

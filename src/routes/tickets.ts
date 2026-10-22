@@ -4,6 +4,7 @@ import { ticketRepo } from '../database/repositories';
 import { requireAuth, requireManager } from '../auth/authMiddleware';
 import { canActOnTicket, canSeeTicket, isManager, isStaff } from '../auth/actor';
 import { fileTicket } from '../services/filing';
+import { assignVendor } from '../services/assignment';
 import { closeRefusal, escalateRefusal } from '../services/ticketRules';
 import { checkAttachments } from '../services/storage';
 import { afterTicketChange } from '../services/rebalance';
@@ -112,7 +113,7 @@ router.post(
   async (req: Request<IdParams>, res: Response) => {
     const { vendorId, estimatedEta } = req.body;
     // A manager's own estimate wins; otherwise it comes from the vendor's queue.
-    const ticket = await ticketRepo.assignVendor(req.params.id, vendorId, estimatedEta);
+    const ticket = await assignVendor(req.params.id, vendorId, estimatedEta);
     if (!ticket) {
       logger.warn('Vendor assignment failed - not found', { ticketId: req.params.id, vendorId });
       return res.status(404).json({ error: 'Ticket or Vendor not found' });

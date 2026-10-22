@@ -128,8 +128,11 @@ export function setNotificationProvider(next: NotificationProvider | null): void
 }
 
 export interface SendRequest {
-  ticketId: string;
-  recipientType: 'resident' | 'vendor';
+  /** Empty for messages that are not about a ticket, like an invite to the app. */
+  ticketId: string | null;
+  recipientType: 'resident' | 'vendor' | 'manager';
+  /** Who it is for, so it also shows in their notifications in the app. */
+  recipientUserId?: string | null;
   recipientName: string;
   phone: string;
   message: string;
@@ -161,6 +164,7 @@ export async function sendNotification(request: SendRequest): Promise<any> {
     message: request.message,
     channel,
     language: request.language,
+    recipientUserId: request.recipientUserId ?? null,
     status: result.status,
     provider: result.provider,
     providerMessageId: result.providerMessageId,

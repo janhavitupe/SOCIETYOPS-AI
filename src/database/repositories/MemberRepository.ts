@@ -9,7 +9,7 @@ export interface DirectoryEntry {
   phone: string | null;
   roles: SocietyRole[];
   role: SocietyRole;
-  /** Flat numbers the person occupies or has asked to. */
+  /** Flat numbers the person occupies. */
   flats: string[];
   flatNumber: string;
   /** The membership's status: invited | pending | active. */
@@ -29,13 +29,14 @@ export class MemberRepository {
     const societyId = requireSocietyId();
 
     const memberships = await unscopedPrisma.membership.findMany({
-      where: { societyId, status: { not: 'removed' } },
+      // Only people who are in: a join request waiting for a manager is not a member yet.
+      where: { societyId, status: 'active' },
       include: { user: { select: { id: true, name: true, phoneNumber: true } } },
       orderBy: { createdAt: 'asc' },
     });
 
     const occupancies = await this.prisma.flatOccupant.findMany({
-      where: { status: { in: ['active', 'pending'] } },
+      where: { status: 'active' },
       select: { userId: true, flat: { select: { number: true } } },
     });
 

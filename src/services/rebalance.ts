@@ -1,6 +1,6 @@
 import { prisma } from '../database/prisma';
 import { ticketRepo, vendorRepo } from '../database/repositories';
-import { sendNotification } from './notifications';
+import { assignVendor, notifyResident } from './assignment';
 import { NOT_STARTED_STATUSES, OPEN_WORK_STATUSES } from './dispatch';
 import { isOnDuty } from '../database/repositories/VendorRepository';
 
@@ -115,7 +115,7 @@ export async function rebalanceCategory(category: string): Promise<Reassignment[
     const target = targetFor(job)!;
 
     const from = vendors.find((v) => v.id === job.vendorId)!;
-    const moved = await ticketRepo.assignVendor(
+    const moved = await assignVendor(
       job.id,
       target.id,
       undefined,
@@ -164,7 +164,7 @@ async function rehomeOrphans(category: string): Promise<Reassignment[]> {
     const target = await vendorRepo.findBestForCategory(category, orphan.declinedVendorIds);
     if (!target) break;
     const previous = orphan.assignedVendorName || 'the previous vendor';
-    const moved = await ticketRepo.assignVendor(
+    const moved = await assignVendor(
       orphan.id,
       target.id,
       undefined,
@@ -185,16 +185,11 @@ async function rehomeOrphans(category: string): Promise<Reassignment[]> {
 }
 
 export async function tellResident(ticket: any, previousVendor: string): Promise<void> {
-  if (!ticket.residentPhone) return;
-  await sendNotification({
-    ticketId: ticket.id,
-    recipientType: 'resident',
-    recipientName: ticket.residentName,
-    phone: ticket.residentPhone,
-    message:
-      `Update on complaint #${ticket.id}: ${ticket.assignedVendorName} will now attend instead of ` +
+  await notifyResident(
+    ticket,
+    `Update on complaint #${ticket.id}: ${ticket.assignedVendorName} will now attend instead of ` +
       `${previousVendor}. Expected arrival: ${ticket.estimatedEta}.`,
-  });
+  );
 }
 
 /**

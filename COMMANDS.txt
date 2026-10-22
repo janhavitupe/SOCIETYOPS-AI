@@ -1,0 +1,112 @@
+SOCIETYOPS AI - COMMANDS
+========================
+All commands are for Windows PowerShell, run from the project folder:
+    cd "C:\Users\JANHAVI TUPE\Downloads\societyops-ai"
+
+If a command crashes with "JavaScript heap out of memory", close Spotify / extra
+browser tabs / Prisma Studio, then put this in front of it on the same line:
+    $env:NODE_OPTIONS="--max-old-space-size=2048";
+
+
+1. FIRST-TIME SETUP (or after pulling new code)
+-----------------------------------------------
+npm install                      # install packages
+npx prisma migrate deploy        # apply any new database changes
+npx prisma generate              # rebuild the database client
+
+
+2. RUN THE APP (development)
+----------------------------
+npm run dev
+    -> open http://localhost:3000
+    -> stop with Ctrl + C
+
+IMPORTANT: after any backend change (src/routes, src/services, src/database,
+src/auth, server.ts) press Ctrl + C and run "npm run dev" again.
+Screen changes (src/app, src/components) reload by themselves.
+
+One-time sign-in codes (OTP) are not texted yet: they are printed in this
+terminal as   OTP for +91... (sign-in): 123456
+
+Run on another port (e.g. if 3000 is busy):
+    $env:PORT="3300"; $env:BETTER_AUTH_URL="http://localhost:3300"; $env:ALLOWED_ORIGINS="http://localhost:3300"; npm run dev
+
+
+3. RUN THE APP (production build)
+---------------------------------
+npm run build                    # build the screens and server into dist/
+npm start                        # run the built copy (does NOT see code changes until you build again)
+
+
+4. DATABASE BROWSER (Prisma Studio)
+-----------------------------------
+npx prisma studio
+    -> open http://localhost:5555
+    -> stop with Ctrl + C
+Edits made here change the real database straight away.
+
+
+5. TESTS AND CHECKS
+-------------------
+npm test                         # all automated tests (uses its own "societyops_test" schema, never your data)
+npx vitest run tests/worker.test.ts     # one test file
+npm run typecheck                # TypeScript errors
+npm run lint                     # code problems
+npm run format                   # tidy code formatting
+
+
+6. DEMO DATA
+------------
+Add the demo common areas and lifts to an existing database (adds only):
+    npx tsx prisma/seedPlaces.ts
+
+Wipe EVERYTHING and reload the demo societies, users, vendors and tickets:
+    $env:SEED_RESET="true"; npx prisma db seed; Remove-Item Env:SEED_RESET
+    (This deletes all your own data too: users, flats, vendors, tickets.)
+
+
+7. CLEAR ALL TICKETS AND CHATS (keep users, flats, vendors)
+-----------------------------------------------------------
+& "C:\Program Files\PostgreSQL\18\bin\psql.exe" "postgresql://USER:PASSWORD@localhost:5432/DBNAME" -c 'BEGIN; DELETE FROM "AgentActivityLog"; DELETE FROM "NotificationLog"; DELETE FROM "TimelineEvent"; DELETE FROM "Ticket"; DELETE FROM "ChatMessage"; UPDATE "Vendor" SET "activeJobsCount" = 0; COMMIT;'
+    Use the same USER, PASSWORD and DBNAME as DATABASE_URL in your .env file
+    (leave off anything after "?" in that URL).
+
+
+8. SAVE YOUR WORK (git)
+-----------------------
+git status                       # what changed
+git add -A
+git commit -m "describe what you did"
+git push                         # send it to GitHub
+
+
+9. BACKUP THE DATABASE
+----------------------
+npm run backup
+
+
+DEMO LOGINS (phone / password)
+------------------------------
+Shree Ram Enclave (join code SHREERAM)
+    Admin             98000 00000 / admin123
+    Manager (Arvind)  98765 11111 / arvind123
+    Resident Vikram   98210 99887 / vikram123   (B-402)
+    Resident Ananya   99870 11223 / ananya123   (A-101)
+    Plumber Ramesh    98201 44321 / ramesh123   (only after a full re-seed; otherwise
+                                                 use "Sign in with a one-time code instead")
+Green Valley (join code GREENVAL)
+    Manager Priya     99000 11111 / priya123
+    Resident Rohan    99000 22222 / rohan123
+    Plumber Sunil     99000 33333 / sunil123    (only after a full re-seed)
+
+Any vendor can sign in with a one-time code to the phone number on their vendor record.
+
+
+USEFUL PAGES
+------------
+http://localhost:3000/login            sign in
+http://localhost:3000/join/SHREERAM    join a society as a new resident
+http://localhost:3000/manager          manager dashboard
+http://localhost:3000/manager/buildings   towers, flats, common areas, CSV import/export
+http://localhost:3000/manager/vendors  vendors
+http://localhost:3000/worker           a vendor's jobs

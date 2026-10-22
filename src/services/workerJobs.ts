@@ -1,8 +1,8 @@
 import { prisma } from '../database/prisma';
 import { ticketRepo, vendorRepo } from '../database/repositories';
 import { resolveImageUrls } from './storage';
-import { sendNotification } from './notifications';
-import { NOT_STARTED_STATUSES, OPEN_WORK_STATUSES } from './dispatch';
+import { assignVendor, notifyManagers, notifyResident } from './assignment';
+import { OPEN_WORK_STATUSES } from './dispatch';
 import { afterTicketChange, rebalanceCategory, tellResident } from './rebalance';
 
 /**
@@ -183,16 +183,7 @@ async function addEvent(
   });
 }
 
-async function messageResident(job: JobRow, message: string) {
-  if (!job.residentPhone) return;
-  await sendNotification({
-    ticketId: job.id,
-    recipientType: 'resident',
-    recipientName: job.residentName,
-    phone: job.residentPhone,
-    message,
-  });
-}
+const messageResident = (job: JobRow, message: string) => notifyResident(job, message);
 
 /**
  * A step the vendor reports on their job. Refused (409) when it does not fit
@@ -215,6 +206,7 @@ export async function act(vendorId: string, ticketId: string, input: ActionInput
   switch (input.action) {
     case 'accept':
       await addEvent(job.id, vendor.name, 'worker_accepted', 'Vendor Accepted', `${vendor.name} accepted the job.`);
+      await messageResident(job, `Update on complaint #${job.id}: ${vendor.name} has accepted the job.`);
       break;
 
     case 'on_my_way':
@@ -291,8 +283,14 @@ async function decline(job: JobRow, vendor: { id: string; name: string }, reason
 
   const next = await vendorRepo.findBestForCategory(job.issueCategory, declinedVendorIds);
   if (next) {
-    const moved = await ticketRepo.assignVendor(job.id, next.id, undefined, `${vendor.name} could not take it.`);
-    if (moved) await tellResident(moved, vendor.name);
+    const moved = await assignVendor(job.id, next.id, undefined, `${vendor.name} could not take it.`, false);
+    if (moved) {
+      await tellResident(moved, vendor.name);
+      await notifyManagers(
+        job.id,
+        `${vendor.name} declined job #${job.id} at ${job.flatNumber} ("${reason}"). It has gone to ${next.name}, ETA ${moved.estimatedEta}.`,
+      );
+    }
   } else {
     await prisma.ticket.update({
       where: { id: job.id },
@@ -317,6 +315,14 @@ async function decline(job: JobRow, vendor: { id: string; name: string }, reason
       where: { id: vendor.id, activeJobsCount: { gt: 0 } },
       data: { activeJobsCount: { decrement: 1 } },
     });
+    await messageResident(
+      job,
+      `Update on complaint #${job.id}: ${vendor.name} could not take it. The society office is arranging another vendor.`,
+    );
+    await notifyManagers(
+      job.id,
+      `${vendor.name} declined job #${job.id} at ${job.flatNumber} ("${reason}") and no other ${job.issueCategory} vendor is free. Please assign someone.`,
+    );
   }
   await ticketRepo.refreshQueueEtas(vendor.id);
 }

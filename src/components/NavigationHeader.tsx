@@ -12,12 +12,13 @@ import {
   Settings,
   Building2,
   Wrench,
+  Contact,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { isManagerRole } from '../app/roles';
 import { SocietySwitcher } from '../app/SocietySwitcher';
 
-type Tab = 'resident' | 'manager' | 'vendors' | 'buildings' | 'jobs';
+type Tab = 'resident' | 'manager' | 'vendors' | 'buildings' | 'residents' | 'jobs';
 
 interface NavigationHeaderProps {
   activeTab: Tab;
@@ -31,6 +32,9 @@ interface NavigationHeaderProps {
   onRunFollowupCycle: () => void;
   isFollowupRunning: boolean;
   user?: any;
+  /** Residents' and vendors' own notifications. */
+  inboxUnread?: number;
+  onOpenInbox?: () => void;
 }
 
 export const NavigationHeader: React.FC<NavigationHeaderProps> = ({
@@ -45,6 +49,8 @@ export const NavigationHeader: React.FC<NavigationHeaderProps> = ({
   onRunFollowupCycle,
   isFollowupRunning,
   user,
+  inboxUnread = 0,
+  onOpenInbox,
 }) => {
   const { logout } = useAuth();
   const role = user?.role || 'guest';
@@ -141,6 +147,18 @@ export const NavigationHeader: React.FC<NavigationHeaderProps> = ({
                   <Building2 className="w-3.5 h-3.5" />
                   <span>Buildings</span>
                 </button>
+
+                <button
+                  onClick={() => setActiveTab('residents')}
+                  className={`flex items-center space-x-1.5 px-3.5 py-1.5 rounded text-xs font-bold uppercase tracking-wider transition-all ${
+                    activeTab === 'residents'
+                      ? 'bg-white dark:bg-[#181817] text-[#6366F1] shadow-2xs'
+                      : 'text-[#666660] dark:text-slate-400 hover:text-[#1A1A1A] dark:hover:text-white'
+                  }`}
+                >
+                  <Contact className="w-3.5 h-3.5" />
+                  <span>Residents</span>
+                </button>
               </>
             )}
           </nav>
@@ -183,6 +201,22 @@ export const NavigationHeader: React.FC<NavigationHeaderProps> = ({
                   )}
                 </button>
               </>
+            )}
+
+            {!isManagerRole(role) && onOpenInbox && (
+              <button
+                onClick={onOpenInbox}
+                className="relative p-2 rounded text-[#666660] dark:text-slate-300 hover:bg-[#F0F0EE] dark:hover:bg-[#222220] transition-all cursor-pointer border border-transparent hover:border-[#E5E5E1]"
+                title="Notifications"
+                aria-label={inboxUnread ? `Notifications, ${inboxUnread} new` : 'Notifications'}
+              >
+                <Bell className="w-4 h-4" />
+                {inboxUnread > 0 && (
+                  <span className="absolute top-1 right-1 w-3.5 h-3.5 bg-[#EF4444] text-white text-[9px] font-bold rounded-full flex items-center justify-center">
+                    {inboxUnread > 9 ? '9+' : inboxUnread}
+                  </span>
+                )}
+              </button>
             )}
 
             {role === 'society_admin' && (
@@ -274,6 +308,15 @@ export const NavigationHeader: React.FC<NavigationHeaderProps> = ({
               >
                 <Building2 className="w-3.5 h-3.5" />
                 <span>Buildings</span>
+              </button>
+              <button
+                onClick={() => setActiveTab('residents')}
+                className={`flex items-center space-x-1 px-3 py-1.5 rounded text-xs font-bold uppercase tracking-wider ${
+                  activeTab === 'residents' ? 'bg-[#1A1A1A] text-white' : 'text-[#666660] dark:text-slate-400'
+                }`}
+              >
+                <Contact className="w-3.5 h-3.5" />
+                <span>Residents</span>
               </button>
             </>
           )}

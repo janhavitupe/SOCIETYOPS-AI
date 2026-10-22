@@ -30,6 +30,7 @@ import buildingRoutes from './src/routes/buildings';
 import joiningRoutes from './src/routes/joining';
 import workerRoutes from './src/routes/worker';
 import placeRoutes from './src/routes/places';
+import residentRoutes from './src/routes/residents';
 
 /** TRUST_PROXY as Express wants it: a hop count, true/false, or a list of addresses. */
 function trustProxySetting(value?: string): boolean | number | string {
@@ -152,6 +153,11 @@ export async function createApp(
   app.use('/api', joiningRoutes);
   app.use('/api', workerRoutes);
   app.use('/api', placeRoutes);
+  app.use('/api', residentRoutes);
+
+  // An API path nothing handles is an error, not the web page: answering with
+  // the SPA's HTML hid a stale server whose routes were missing.
+  app.use('/api', (req: Request, res: Response) => res.status(404).json({ error: 'Not found' }));
 
   if (opts.attachFrontend) {
     await opts.attachFrontend(app);

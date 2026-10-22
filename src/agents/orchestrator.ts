@@ -166,7 +166,7 @@ export async function processResidentMessage(
           ? ticketConfirmation(actor, result.ticketCreated)
           : 'Maaf kijiye, main abhi jawab nahi de paaya. Kripya apni baat ek baar phir likhein.');
 
-      await rememberTurn(actor, userText, replyText);
+      await rememberTurn(actor, userText, replyText, result.ticketCreated?.id);
       return { ...result, replyText, thoughtSteps, source: 'groq' };
     } catch (err) {
       fallbackReason = `Groq request failed: ${(err as Error).message}`;
@@ -175,15 +175,15 @@ export async function processResidentMessage(
   }
 
   const fallback = await runDeterministicAgentFallback(actor, userText, attachedImages, thoughtSteps, fallbackReason);
-  await rememberTurn(actor, userText, fallback.replyText);
+  await rememberTurn(actor, userText, fallback.replyText, fallback.ticketCreated?.id);
   return fallback;
 }
 
 /** Persists the exchange so the next message has context. Never fatal. */
-async function rememberTurn(actor: ToolActor, userText: string, replyText: string): Promise<void> {
+async function rememberTurn(actor: ToolActor, userText: string, replyText: string, ticketId?: string): Promise<void> {
   try {
     await chatRepo.append(actor.id, 'user', userText);
-    if (replyText) await chatRepo.append(actor.id, 'model', replyText);
+    if (replyText) await chatRepo.append(actor.id, 'model', replyText, ticketId);
   } catch (err) {
     console.warn('Could not persist chat history:', (err as Error).message);
   }

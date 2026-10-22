@@ -2,6 +2,7 @@ import { ticketRepo, vendorRepo, agentLogRepo } from '../database/repositories';
 import { sendNotification } from './notifications';
 import { isOverdue } from './sla';
 import { rebalanceCategory } from './rebalance';
+import { assignVendor } from './assignment';
 
 /** Words in a complaint that mean someone may be in danger. */
 const EMERGENCY_KEYWORDS = ['stuck', 'gas', 'sewage', 'fire', 'smoke', 'trapped'];
@@ -45,7 +46,7 @@ export async function runFollowupCycle(now: Date = new Date()): Promise<Followup
       // A job everyone declined waits for the manager rather than going round again.
       const vendor = await vendorRepo.findBestForCategory(ticket.issueCategory, ticket.declinedVendorIds);
       if (vendor) {
-        await ticketRepo.assignVendor(ticket.id, vendor.id);
+        await assignVendor(ticket.id, vendor.id);
         dispatched += 1;
       }
       continue;

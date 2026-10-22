@@ -65,7 +65,7 @@ export const NotificationsDrawer: React.FC<NotificationsDrawerProps> = ({
 
                 <div className="flex items-center justify-between text-[10px] text-[#888888] pt-1 border-t border-[#E5E5E1] dark:border-[#2D2D2A]">
                   <span>
-                    Ticket #{notif.ticketId} | Lang: {notif.language}
+                    {notif.ticketId ? `Ticket #${notif.ticketId}` : 'App invite'} | Lang: {notif.language}
                   </span>
                   <span className="flex items-center space-x-1 text-[#10B981] font-bold uppercase">
                     <CheckCheck className="w-3 h-3" />

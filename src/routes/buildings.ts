@@ -1,4 +1,4 @@
-import { Router, Request, Response } from 'express';
+import express, { Router, Request, Response } from 'express';
 import { Prisma } from '@prisma/client';
 import { logger } from '../logger';
 import { prisma } from '../database/prisma';
@@ -6,6 +6,7 @@ import { requireManager } from '../auth/authMiddleware';
 import { requireSocietyId } from '../requestContext';
 import { generateFlats } from '../services/buildings';
 import { addOccupant, moveOut, OccupantError } from '../services/occupants';
+import { applyImport, exportCsv, planImport, templateCsv } from '../services/flatRegister';
 import { validateBody, validateParams, validateQuery } from './validate';
 import {
   addOccupantBody,
@@ -128,8 +129,9 @@ router.post(
 
 // --- Flats ---
 
+// People waiting for approval are not residents yet: they show only under join requests.
 const ACTIVE_OCCUPANTS = {
-  where: { status: { in: ['active', 'pending'] } },
+  where: { status: 'active' },
   include: { user: { select: { id: true, name: true, phoneNumber: true } } },
   orderBy: { createdAt: 'asc' as const },
 };
@@ -209,6 +211,43 @@ router.delete('/flats/:id', requireManager, validateParams(idParams), async (req
   res.status(204).end();
 });
 
+// --- The register as a spreadsheet ---
+
+const sendCsv = (res: Response, filename: string, csv: string) =>
+  res.type('text/csv; charset=utf-8').set('Content-Disposition', `attachment; filename="${filename}"`).send(csv);
+
+router.get('/flats/template.csv', requireManager, (req, res) =>
+  sendCsv(res, 'flat-register-template.csv', templateCsv()),
+);
+
+router.get('/flats/export.csv', requireManager, async (req, res) => {
+  const day = new Date().toISOString().slice(0, 10);
+  sendCsv(res, `flat-register-${day}.csv`, await exportCsv());
+});
+
+/**
+ * Upload a filled-in register as text/csv. ?dryRun=true reports what would
+ * happen, row by row, without writing; otherwise the good rows are imported
+ * and the bad ones reported.
+ */
+router.post(
+  '/flats/import',
+  requireManager,
+  express.text({ type: ['text/csv', 'text/plain'], limit: '2mb' }),
+  async (req, res) => {
+    if (typeof req.body !== 'string' || !req.body.trim()) {
+      return res.status(400).json({ error: 'Send the CSV file as text/csv' });
+    }
+    const dryRun = req.query.dryRun === 'true';
+    const plan = dryRun ? await planImport(req.body) : await applyImport(req.body, req.user!.id);
+    if (plan.fileError) return res.status(400).json({ error: plan.fileError });
+
+    if (!dryRun)
+      logger.info('Flat register imported', { ...plan.summary, newTowers: plan.newTowers.length, by: req.user!.id });
+    res.json({ ...plan, dryRun });
+  },
+);
+
 // --- Occupants ---
 
 router.get(
@@ -219,9 +258,10 @@ router.get(
     const flat = await prisma.flat.findFirst({ where: { id: req.params.id, deletedAt: null } });
     if (!flat) return res.status(404).json({ error: 'Flat not found' });
 
-    // Everyone who has ever lived here, current first.
+    // Everyone who has lived here, current first. Requests to join are not
+    // occupants until approved, and rejected ones never were.
     const occupants = await prisma.flatOccupant.findMany({
-      where: { flatId: flat.id },
+      where: { flatId: flat.id, status: { in: ['active', 'ended'] } },
       include: { user: { select: { id: true, name: true, phoneNumber: true } } },
       orderBy: [{ status: 'asc' }, { moveInDate: 'desc' }],
     });
