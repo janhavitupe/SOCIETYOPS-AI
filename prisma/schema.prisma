@@ -47,6 +47,7 @@ model Society {
   notifications      NotificationLog[]
   agentLogs          AgentActivityLog[]
   chatMessages       ChatMessage[]
+  notices            Notice[]
 }
 
 /// A person's role in one society. Roles live here, not on the user, because
@@ -476,4 +477,60 @@ model ChatMessage {
   createdAt  DateTime @default(now())
 
   @@index([societyId, residentId, createdAt])
+}
+
+/// An announcement from the society office: a water cut, lift servicing, the AGM.
+model Notice {
+  id          String    @id @default(cuid())
+  societyId   String
+  society     Society   @relation(fields: [societyId], references: [id], onDelete: Cascade)
+  title       String
+  body        String
+  /// all | towers | flats
+  audience    String    @default("all")
+  towerIds    String[]  @default([])
+  flatIds     String[]  @default([])
+  urgent      Boolean   @default(false)
+  pinned      Boolean   @default(false)
+  /// Shown from this moment; a time in the future schedules it.
+  publishAt   DateTime  @default(now())
+  /// Hidden after this moment, when set.
+  expiresAt   DateTime?
+  /// When the audience was told it was out; empty until it publishes.
+  notifiedAt  DateTime?
+  /// A poll's choices, when the notice asks a question.
+  pollOptions String[]  @default([])
+  createdById String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  reads       NoticeRead[]
+  votes       NoticeVote[]
+
+  @@index([societyId, publishAt])
+}
+
+/// Who has opened a notice, so the office can chase people who have not.
+model NoticeRead {
+  id       String   @id @default(cuid())
+  noticeId String
+  notice   Notice   @relation(fields: [noticeId], references: [id], onDelete: Cascade)
+  userId   String
+  readAt   DateTime @default(now())
+
+  @@unique([noticeId, userId])
+}
+
+/// One person's answer to a notice's poll; they can change it.
+model NoticeVote {
+  id        String   @id @default(cuid())
+  noticeId  String
+  notice    Notice   @relation(fields: [noticeId], references: [id], onDelete: Cascade)
+  userId    String
+  option    Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([noticeId, userId])
 }

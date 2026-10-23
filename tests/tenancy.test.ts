@@ -410,6 +410,16 @@ describe('coverage', () => {
     'POST /api/worker/jobs/:id/status',
     'PUT /api/worker/duty',
     'GET /api/notifications',
+    // Notices: other societies, towers and flats in notices.test.ts.
+    'GET /api/notices',
+    'GET /api/notices/manage',
+    'POST /api/notices',
+    'PATCH /api/notices/:id',
+    'DELETE /api/notices/:id',
+    'POST /api/notices/:id/read',
+    'POST /api/notices/:id/vote',
+    'GET /api/notices/:id/reads',
+    'POST /api/notices/:id/remind',
     // The setup wizard: the caller's own society only (onboarding.test.ts).
     'GET /api/onboarding',
     'POST /api/onboarding/steps/:step/visit',

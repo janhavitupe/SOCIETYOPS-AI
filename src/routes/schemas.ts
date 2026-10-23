@@ -402,3 +402,39 @@ export const performanceQuery = z
     to: z.coerce.date().optional(),
   })
   .refine((q) => !q.from || !q.to || q.from < q.to, { message: 'The start must be before the end' });
+
+// --- Notices ---
+
+const noticeFields = {
+  title: text(150),
+  body: text(5000),
+  audience: z.enum(['all', 'towers', 'flats']).default('all'),
+  towerIds: z.array(text(64)).max(100).default([]),
+  flatIds: z.array(text(64)).max(2000).default([]),
+  urgent: z.boolean().default(false),
+  pinned: z.boolean().default(false),
+  publishAt: z.coerce.date().nullable().optional(),
+  expiresAt: z.coerce.date().nullable().optional(),
+  pollOptions: z.array(text(100)).max(10).default([]),
+};
+
+export const createNoticeBody = z
+  .object(noticeFields)
+  .refine((b) => b.pollOptions.length !== 1, { message: 'A poll needs at least two choices', path: ['pollOptions'] });
+
+export const updateNoticeBody = z
+  .object({
+    title: noticeFields.title,
+    body: noticeFields.body,
+    audience: z.enum(['all', 'towers', 'flats']),
+    towerIds: z.array(text(64)).max(100),
+    flatIds: z.array(text(64)).max(2000),
+    urgent: z.boolean(),
+    pinned: z.boolean(),
+    publishAt: z.coerce.date(),
+    expiresAt: z.coerce.date().nullable(),
+  })
+  .partial()
+  .refine((b) => Object.values(b).some((v) => v !== undefined), { message: 'No updatable fields provided' });
+
+export const voteBody = z.object({ option: z.number().int().min(0).max(9) });

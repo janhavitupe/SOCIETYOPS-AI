@@ -5,6 +5,7 @@ import { rebalanceCategory } from './rebalance';
 import { assignVendor } from './assignment';
 import { autoCloseQuietTickets } from './signoff';
 import { passOnUnacceptedJobs } from './acceptTimeout';
+import { publishDueNotices } from './notices';
 
 /** Words in a complaint that mean someone may be in danger. */
 const EMERGENCY_KEYWORDS = ['stuck', 'gas', 'sewage', 'fire', 'smoke', 'trapped'];
@@ -43,6 +44,8 @@ export async function runFollowupCycle(now: Date = new Date()): Promise<Followup
 
   const autoClosed = await autoCloseQuietTickets(now);
   const passedOn = (await passOnUnacceptedJobs(now)).length;
+  // Scheduled notices go out on the same clock.
+  await publishDueNotices(now);
 
   const allTickets = await ticketRepo.findAll();
 
