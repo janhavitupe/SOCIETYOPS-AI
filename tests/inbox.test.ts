@@ -34,7 +34,10 @@ const inbox = async (token: string) => (await api.get('/api/me/notifications').s
 
 async function cleanup() {
   const vendors = await unscopedPrisma.vendor.findMany({ where: { phone: SPARE_PLUMBER } });
-  await unscopedPrisma.ticket.updateMany({ where: { vendorId: { in: vendors.map((v) => v.id) } }, data: { vendorId: null } });
+  await unscopedPrisma.ticket.updateMany({
+    where: { vendorId: { in: vendors.map((v) => v.id) } },
+    data: { vendorId: null },
+  });
   await unscopedPrisma.vendor.deleteMany({ where: { phone: SPARE_PLUMBER } });
   await unscopedPrisma.user.deleteMany({ where: { phoneNumber: { in: [SPARE_PLUMBER, JOINER] } } });
 }
@@ -134,7 +137,10 @@ describe('a vendor is told about their jobs', () => {
 
   it('with nobody left, the resident and managers are told it needs a vendor', async () => {
     const spare = await verifyPhone(SPARE_PLUMBER);
-    await api.post(`/api/worker/jobs/${job.id}/status`).set(bearer(spare)).send({ action: 'decline', note: 'Out of town' });
+    await api
+      .post(`/api/worker/jobs/${job.id}/status`)
+      .set(bearer(spare))
+      .send({ action: 'decline', note: 'Out of town' });
 
     const vikram = (await inbox(resident)).notifications.filter((n: any) => n.ticketId === job.id);
     expect(vikram.some((n: any) => /arranging another vendor/.test(n.message))).toBe(true);
@@ -157,7 +163,8 @@ describe('join requests stay out of sight until approved', () => {
 
   it('someone who asked to join is not listed as a resident or occupant', async () => {
     const token = await signUp(JOINER, 'Pending Person');
-    flatId = (await unscopedPrisma.flat.findFirstOrThrow({ where: { societyId: SOCIETIES.shreeRam, number: 'B-403' } })).id;
+    flatId = (await unscopedPrisma.flat.findFirstOrThrow({ where: { societyId: SOCIETIES.shreeRam, number: 'B-403' } }))
+      .id;
     const asked = await api.post('/api/join/SHREERAM').set(bearer(token)).send({ flatId, type: 'tenant' });
     expect(asked.body.status).toBe('pending');
 
@@ -187,8 +194,6 @@ describe('join requests stay out of sight until approved', () => {
     expect(requests.body.requests.some((r: any) => r.user.name === 'Pending Person')).toBe(false);
     const occupants = await api.get(`/api/flats/${flatId}/occupants`).set(bearer(manager));
     expect(occupants.body.occupants).toEqual([expect.objectContaining({ status: 'active' })]);
-    expect(
-      await unscopedPrisma.flatOccupant.count({ where: { flatId, user: { phoneNumber: JOINER } } }),
-    ).toBe(1);
+    expect(await unscopedPrisma.flatOccupant.count({ where: { flatId, user: { phoneNumber: JOINER } } })).toBe(1);
   });
 });

@@ -151,9 +151,13 @@ router.patch(
     if (req.body.name && (await nameTaken('asset', req.body.name, existing.id)))
       return res.status(409).json({ error: `There is already an asset called ${req.body.name}` });
 
+    // A renewed AMC gets its expiry reminders again before the new date.
+    const renewed =
+      req.body.amcExpiresOn !== undefined &&
+      (req.body.amcExpiresOn?.getTime() ?? null) !== (existing.amcExpiresOn?.getTime() ?? null);
     const asset = await prisma.asset.update({
       where: { id: existing.id },
-      data: req.body,
+      data: { ...req.body, ...(renewed ? { amcReminded: [] } : {}) },
       include: { amcVendor: { select: { id: true, name: true } } },
     });
     res.json(asset);

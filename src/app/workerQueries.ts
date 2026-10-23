@@ -24,6 +24,9 @@ export interface WorkerJob {
   reopened: boolean;
   /** When it goes to another vendor unless accepted. */
   acceptBy: string | null;
+  /** A planned maintenance visit, with the checks the technician ticks. */
+  planned: boolean;
+  checklist: { item: string; done: boolean }[];
   images: string[];
   workNote: string | null;
   workImages: string[];
@@ -193,5 +196,15 @@ export function useWorkerActions() {
     onSettled: refresh,
   });
 
-  return { step, duty };
+  // Ticking a check needs the connection: it is quick, and shown at once when it lands.
+  const check = useMutation({
+    mutationFn: ({ id, item, done }: { id: string; item: string; done: boolean }) =>
+      api<{ job: WorkerJob }>(`/api/worker/jobs/${encodeURIComponent(id)}/checklist`, {
+        method: 'POST',
+        body: JSON.stringify({ item, done }),
+      }),
+    onSettled: refresh,
+  });
+
+  return { step, duty, check };
 }

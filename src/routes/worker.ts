@@ -2,9 +2,9 @@ import { Router, Request, Response } from 'express';
 import { logger } from '../logger';
 import { requireWorker } from '../auth/authMiddleware';
 import { checkAttachments } from '../services/storage';
-import { act, getJob, listJobs, setDuty, WorkerJobError } from '../services/workerJobs';
+import { act, getJob, listJobs, setCheck, setDuty, WorkerJobError } from '../services/workerJobs';
 import { validateBody, validateParams } from './validate';
-import { idParams, workerActionBody, workerDutyBody, type IdParams } from './schemas';
+import { checklistBody, idParams, workerActionBody, workerDutyBody, type IdParams } from './schemas';
 
 /**
  * A vendor's own screen: their jobs and the steps they report. Only the
@@ -51,6 +51,20 @@ router.post(
       const job = await act(vendorId, req.params.id, req.body);
       logger.info('Worker step', { ticketId: req.params.id, vendorId, action: req.body.action });
       res.json({ job });
+    } catch (err) {
+      return handle(res, err);
+    }
+  },
+);
+
+router.post(
+  '/worker/jobs/:id/checklist',
+  requireWorker,
+  validateParams(idParams),
+  validateBody(checklistBody),
+  async (req: Request<IdParams>, res: Response) => {
+    try {
+      res.json({ job: await setCheck(req.user!.vendorId!, req.params.id, req.body.item, req.body.done) });
     } catch (err) {
       return handle(res, err);
     }

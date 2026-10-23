@@ -106,6 +106,9 @@ async function toJob(job: JobRow, queue?: { position: number; total: number }) {
     escalated: job.status === 'Escalated',
     /** The resident sent it back as not fixed. */
     reopened: job.reopenCount > 0,
+    /** A planned maintenance visit, and the checks it needs. */
+    planned: !!job.scheduleId,
+    checklist: job.checklist.map((item) => ({ item, done: job.checklistDone.includes(item) })),
     /** When it goes to someone else if not accepted; only for a job not yet answered. */
     acceptBy:
       open && stageOf(job) === 'new' ? new Date(assignedAt(job) + acceptMinutes(job.urgency) * 60 * 1000) : null,
@@ -246,6 +249,10 @@ export async function act(vendorId: string, ticketId: string, input: ActionInput
     case 'complete': {
       if (!note) throw new WorkerJobError(400, 'Describe the work you did');
       if (!input.images?.length) throw new WorkerJobError(400, 'Add a photo of the finished work');
+      const unticked = job.checklist.filter((item) => !job.checklistDone.includes(item));
+      if (unticked.length) {
+        throw new WorkerJobError(400, `Tick every check first: ${unticked.join(', ')}`);
+      }
       const finished = await ticketRepo.update(job.id, {
         status: 'Resolved',
         workNote: note,
@@ -342,4 +349,19 @@ export async function setDuty(vendorId: string, onDuty: boolean) {
   });
   const reassigned = onDuty ? await rebalanceCategory(vendor.category) : [];
   return { onDuty, reassigned: reassigned.filter((r) => r.toVendorId === vendorId).length };
+}
+
+/** Ticks or unticks one check on a planned visit's checklist. */
+export async function setCheck(vendorId: string, ticketId: string, item: string, done: boolean) {
+  const job = await findOwnJob(vendorId, ticketId);
+  if (!OPEN_WORK_STATUSES.includes(job.status)) throw new WorkerJobError(409, 'This job is already finished');
+  if (!job.checklist.includes(item)) throw new WorkerJobError(400, "That is not on this job's checklist");
+  const ticked = new Set(job.checklistDone);
+  if (done) ticked.add(item);
+  else ticked.delete(item);
+  await prisma.ticket.update({
+    where: { id: job.id },
+    data: { checklistDone: job.checklist.filter((i) => ticked.has(i)) },
+  });
+  return getJob(vendorId, ticketId);
 }

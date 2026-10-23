@@ -69,6 +69,9 @@ const en = {
   queued: (n: number) => `${n} step${n > 1 ? 's' : ''} waiting to send`,
   queuedFailed: (job: string, why: string) => `Could not send a step for #${job}: ${why}`,
   photoNeedsConnection: 'Adding a photo needs a connection. Try again when you are online.',
+  planned: 'Planned visit',
+  checklist: (done: number, total: number) => `Checklist: ${done} of ${total} done`,
+  checklistFirst: 'Tick every check before marking the job done.',
   savedOffline: 'Saved. It will be sent when you are back online.',
   language: 'हिंदी',
 };
@@ -132,6 +135,9 @@ const hi: Strings = {
   queued: (n) => `${n} कदम भेजने बाकी हैं`,
   queuedFailed: (job, why) => `#${job} का कदम नहीं भेजा जा सका: ${why}`,
   photoNeedsConnection: 'फ़ोटो जोड़ने के लिए इंटरनेट चाहिए। इंटरनेट आने पर फिर कोशिश करें।',
+  planned: 'तय विज़िट',
+  checklist: (done, total) => `चेकलिस्ट: ${total} में से ${done} पूरे`,
+  checklistFirst: 'काम पूरा करने से पहले हर चेक पर टिक करें।',
   savedOffline: 'सेव हो गया। इंटरनेट आने पर भेज दिया जाएगा।',
   language: 'English',
 };

@@ -57,6 +57,135 @@ async function seedSociety(societyId: string, areas: AreaSeed[], assets: AssetSe
   return true;
 }
 
+const LIFT_CHECKS = [
+  'Brakes and brake lining',
+  'Door sensors and safety edge',
+  'Alarm bell and intercom',
+  'Emergency light and fan',
+  'Levelling at every floor',
+  'Ropes and pulleys',
+  'Machine room clean and locked',
+];
+
+const daysFromNow = (n: number) => new Date(Date.now() + n * 24 * 60 * 60 * 1000);
+
+/** Demo schedules and licences; a society that already has schedules is left alone. */
+async function seedMaintenance(societyId: string) {
+  if (await unscopedPrisma.maintenanceSchedule.count({ where: { societyId } })) return;
+  const asset = async (name: string) =>
+    (await unscopedPrisma.asset.findFirst({ where: { societyId, name } }))?.id ?? null;
+  const area = async (name: string) =>
+    (await unscopedPrisma.commonArea.findFirst({ where: { societyId, name } }))?.id ?? null;
+  const vendors = new Set((await unscopedPrisma.vendor.findMany({ where: { societyId } })).map((v) => v.id));
+  const vendor = (id: string) => (vendors.has(id) ? id : null);
+
+  const schedules = [
+    {
+      title: 'Lift A1 monthly service',
+      category: 'Lift & Elevator',
+      assetId: await asset('Lift A1'),
+      every: 1,
+      unit: 'months',
+      due: 12,
+      checklist: LIFT_CHECKS,
+    },
+    {
+      title: 'Lift A2 monthly service',
+      category: 'Lift & Elevator',
+      assetId: await asset('Lift A2'),
+      every: 1,
+      unit: 'months',
+      due: 13,
+      checklist: LIFT_CHECKS,
+    },
+    {
+      title: 'Lift B1 monthly service',
+      category: 'Lift & Elevator',
+      assetId: await asset('Lift B1'),
+      every: 1,
+      unit: 'months',
+      due: 19,
+      checklist: LIFT_CHECKS,
+    },
+    {
+      title: 'Lift B2 monthly service',
+      category: 'Lift & Elevator',
+      assetId: await asset('Lift B2'),
+      every: 1,
+      unit: 'months',
+      due: 20,
+      checklist: LIFT_CHECKS,
+    },
+    {
+      title: 'Overhead tank cleaning',
+      category: 'Cleaning & Pest',
+      commonAreaId: await area('Terrace'),
+      vendorId: vendor('VND-06'),
+      every: 6,
+      unit: 'months',
+      due: 40,
+      checklist: ['Tank drained', 'Walls scrubbed', 'Disinfected', 'Lid locked'],
+    },
+    {
+      title: 'Pest control (common areas)',
+      category: 'Cleaning & Pest',
+      vendorId: vendor('VND-06'),
+      every: 3,
+      unit: 'months',
+      due: 25,
+      checklist: ['Basement', 'Lobbies', 'Garden', 'Garbage area'],
+    },
+    {
+      title: 'DG set service',
+      category: 'Electrical',
+      assetId: await asset('DG Set'),
+      vendorId: vendor('VND-02'),
+      every: 3,
+      unit: 'months',
+      due: 55,
+      checklist: ['Oil level', 'Battery', 'Test run 15 min'],
+    },
+    {
+      title: 'Fire extinguisher refill',
+      category: 'General Repairs',
+      assetId: await asset('Fire Panel'),
+      every: 12,
+      unit: 'months',
+      due: 70,
+      checklist: ['All extinguishers refilled', 'Pressure gauges green', 'Tags dated'],
+    },
+  ];
+  for (const s of schedules) {
+    await unscopedPrisma.maintenanceSchedule.create({
+      data: {
+        societyId,
+        title: s.title,
+        category: s.category,
+        assetId: s.assetId ?? null,
+        commonAreaId: s.commonAreaId ?? null,
+        vendorId: s.vendorId ?? null,
+        every: s.every,
+        unit: s.unit,
+        nextDueOn: daysFromNow(s.due),
+        checklist: s.checklist,
+      },
+    });
+  }
+
+  await unscopedPrisma.licence.createMany({
+    data: [
+      {
+        societyId,
+        name: 'Lift licence (all lifts)',
+        expiresOn: daysFromNow(24),
+        notes: 'Electrical Inspectorate, Mumbai',
+      },
+      { societyId, name: 'Fire NOC', expiresOn: daysFromNow(150), notes: 'Mumbai Fire Brigade' },
+      { societyId, name: 'Pest control contract', expiresOn: daysFromNow(80), notes: 'GreenPest' },
+    ],
+  });
+}
+
 export async function seedPlaces() {
   const shreeRam = await seedSociety(
     'society-main',
@@ -127,6 +256,9 @@ export async function seedPlaces() {
       });
     }
   }
+
+  // Added whether or not the places were just made: it checks for schedules itself.
+  await seedMaintenance('society-main');
 
   await seedSociety(
     'society-green',

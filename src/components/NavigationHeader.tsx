@@ -14,12 +14,13 @@ import {
   Wrench,
   Contact,
   Megaphone,
+  CalendarClock,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { isManagerRole } from '../app/roles';
 import { SocietySwitcher } from '../app/SocietySwitcher';
 
-type Tab = 'resident' | 'manager' | 'vendors' | 'buildings' | 'residents' | 'notices' | 'jobs';
+type Tab = 'resident' | 'manager' | 'vendors' | 'buildings' | 'residents' | 'notices' | 'maintenance' | 'jobs';
 
 interface NavigationHeaderProps {
   activeTab: Tab;
@@ -171,6 +172,18 @@ export const NavigationHeader: React.FC<NavigationHeaderProps> = ({
                 >
                   <Megaphone className="w-3.5 h-3.5" />
                   <span>Notices</span>
+                </button>
+
+                <button
+                  onClick={() => setActiveTab('maintenance')}
+                  className={`flex items-center space-x-1.5 px-3.5 py-1.5 rounded text-xs font-bold uppercase tracking-wider transition-all ${
+                    activeTab === 'maintenance'
+                      ? 'bg-white dark:bg-[#181817] text-[#6366F1] shadow-2xs'
+                      : 'text-[#666660] dark:text-slate-400 hover:text-[#1A1A1A] dark:hover:text-white'
+                  }`}
+                >
+                  <CalendarClock className="w-3.5 h-3.5" />
+                  <span>Maintenance</span>
                 </button>
               </>
             )}
@@ -339,6 +352,15 @@ export const NavigationHeader: React.FC<NavigationHeaderProps> = ({
               >
                 <Megaphone className="w-3.5 h-3.5" />
                 <span>Notices</span>
+              </button>
+              <button
+                onClick={() => setActiveTab('maintenance')}
+                className={`flex items-center space-x-1 px-3 py-1.5 rounded text-xs font-bold uppercase tracking-wider ${
+                  activeTab === 'maintenance' ? 'bg-[#1A1A1A] text-white' : 'text-[#666660] dark:text-slate-400'
+                }`}
+              >
+                <CalendarClock className="w-3.5 h-3.5" />
+                <span>Upkeep</span>
               </button>
             </>
           )}

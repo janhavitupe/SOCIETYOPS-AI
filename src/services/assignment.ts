@@ -73,7 +73,7 @@ export async function assignVendor(
 }
 
 /** Tells the society's managers about something that needs them. */
-export async function notifyManagers(ticketId: string, message: string) {
+export async function notifyManagers(ticketId: string | null, message: string) {
   const managers = await unscopedPrisma.membership.findMany({
     where: { societyId: requireSocietyId(), role: { in: MANAGER_ROLES }, status: 'active' },
     include: { user: { select: { id: true, name: true, phoneNumber: true } } },

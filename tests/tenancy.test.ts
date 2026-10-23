@@ -410,6 +410,18 @@ describe('coverage', () => {
     'POST /api/worker/jobs/:id/status',
     'PUT /api/worker/duty',
     'GET /api/notifications',
+    // Preventive maintenance: other societies in maintenance.test.ts.
+    'GET /api/maintenance/schedules',
+    'POST /api/maintenance/schedules',
+    'PATCH /api/maintenance/schedules/:id',
+    'DELETE /api/maintenance/schedules/:id',
+    'POST /api/maintenance/schedules/:id/raise',
+    'GET /api/maintenance/licences',
+    'POST /api/maintenance/licences',
+    'PATCH /api/maintenance/licences/:id',
+    'DELETE /api/maintenance/licences/:id',
+    'GET /api/maintenance/upcoming',
+    'POST /api/worker/jobs/:id/checklist',
     // Notices: other societies, towers and flats in notices.test.ts.
     'GET /api/notices',
     'GET /api/notices/manage',

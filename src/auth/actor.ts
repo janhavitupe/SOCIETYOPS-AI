@@ -52,7 +52,8 @@ export const highestRole = (roles: SocietyRole[]): SocietyRole =>
 export const isManager = (actor: Pick<Actor, 'roles'>) => actor.roles.some((r) => MANAGER_ROLES.includes(r));
 export const isStaff = (actor: Pick<Actor, 'roles'>) => actor.roles.some((r) => STAFF_ROLES.includes(r));
 export const isSocietyAdmin = (actor: Pick<Actor, 'roles'>) => actor.roles.includes('society_admin');
-export const isWorker = (actor: Pick<Actor, 'roles' | 'vendorId'>) => actor.roles.includes('worker') && !!actor.vendorId;
+export const isWorker = (actor: Pick<Actor, 'roles' | 'vendorId'>) =>
+  actor.roles.includes('worker') && !!actor.vendorId;
 
 export function identityFrom(session: AuthSession): Identity {
   const user = session.user as AuthSession['user'] & { phoneNumber?: string | null; platformRole?: string | null };

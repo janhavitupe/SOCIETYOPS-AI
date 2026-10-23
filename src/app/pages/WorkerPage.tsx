@@ -187,6 +187,9 @@ function JobCard({
               {isNext ? t.next : t.inLine(job.queue?.position ?? '–')} · {job.id}
             </span>
             <span className="flex items-center gap-1.5">
+              {job.planned && (
+                <span className="rounded bg-indigo-600 px-1.5 py-0.5 font-semibold text-white">{t.planned}</span>
+              )}
               {job.reopened && (
                 <span className="rounded bg-orange-600 px-1.5 py-0.5 font-semibold text-white">{t.reopened}</span>
               )}
@@ -229,7 +232,7 @@ function JobCard({
 }
 
 function JobDetail({ job, t }: { job: WorkerJob; t: WorkerStrings }) {
-  const { step } = useWorkerActions();
+  const { step, check } = useWorkerActions();
   const [pending, setPending] = useState<WorkerAction | null>(null);
   const [note, setNote] = useState('');
   const [photos, setPhotos] = useState<{ key: string; preview: string }[]>([]);
@@ -303,6 +306,30 @@ function JobDetail({ job, t }: { job: WorkerJob; t: WorkerStrings }) {
       </div>
 
       {savedOffline && <p className="text-sm font-medium text-amber-700 dark:text-amber-300">{t.savedOffline}</p>}
+
+      {job.checklist.length > 0 && (
+        <fieldset className="grid gap-1.5 rounded-md border p-3">
+          <legend className="px-1 text-sm font-semibold">
+            {t.checklist(job.checklist.filter((c) => c.done).length, job.checklist.length)}
+          </legend>
+          {job.checklist.map((c) => (
+            <label key={c.item} className="flex min-h-9 items-center gap-2.5 text-sm">
+              <input
+                type="checkbox"
+                className="size-5"
+                checked={c.done}
+                disabled={check.isPending || !job.actions.length}
+                onChange={(e) => check.mutate({ id: job.id, item: c.item, done: e.target.checked })}
+              />
+              <span className={c.done ? 'text-muted-foreground line-through' : ''}>{c.item}</span>
+            </label>
+          ))}
+          {job.checklist.some((c) => !c.done) && job.actions.includes('complete') && (
+            <span className="text-xs text-muted-foreground">{t.checklistFirst}</span>
+          )}
+          <FormError message={check.error?.message ?? null} />
+        </fieldset>
+      )}
 
       {form ? (
         <form

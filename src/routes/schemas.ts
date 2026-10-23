@@ -438,3 +438,59 @@ export const updateNoticeBody = z
   .refine((b) => Object.values(b).some((v) => v !== undefined), { message: 'No updatable fields provided' });
 
 export const voteBody = z.object({ option: z.number().int().min(0).max(9) });
+
+// --- Preventive maintenance ---
+
+const scheduleFields = {
+  title: text(150),
+  category: z.enum(ISSUE_CATEGORIES),
+  assetId: text(64).nullable().default(null),
+  commonAreaId: text(64).nullable().default(null),
+  vendorId: text(64).nullable().default(null),
+  every: z.number().int().min(1).max(365),
+  unit: z.enum(['days', 'weeks', 'months']).default('months'),
+  nextDueOn: z.coerce.date(),
+  leadDays: z.number().int().min(0).max(60).default(3),
+  checklist: z.array(text(200)).max(40).default([]),
+  active: z.boolean().default(true),
+};
+
+export const createScheduleBody = z.object(scheduleFields);
+
+export const updateScheduleBody = z
+  .object({
+    title: scheduleFields.title,
+    category: scheduleFields.category,
+    assetId: text(64).nullable(),
+    commonAreaId: text(64).nullable(),
+    vendorId: text(64).nullable(),
+    every: scheduleFields.every,
+    unit: z.enum(['days', 'weeks', 'months']),
+    nextDueOn: z.coerce.date(),
+    leadDays: z.number().int().min(0).max(60),
+    checklist: z.array(text(200)).max(40),
+    active: z.boolean(),
+  })
+  .partial()
+  .refine((b) => Object.values(b).some((v) => v !== undefined), { message: 'No updatable fields provided' });
+
+export const licenceBody = z.object({
+  name: text(150),
+  assetId: text(64).nullable().default(null),
+  expiresOn: z.coerce.date(),
+  notes: z.string().trim().max(500).nullable().default(null),
+});
+
+export const updateLicenceBody = z
+  .object({
+    name: text(150),
+    assetId: text(64).nullable(),
+    expiresOn: z.coerce.date(),
+    notes: z.string().trim().max(500).nullable(),
+  })
+  .partial()
+  .refine((b) => Object.values(b).some((v) => v !== undefined), { message: 'No updatable fields provided' });
+
+export const upcomingQuery = z.object({ days: z.coerce.number().int().min(1).max(366).optional() });
+
+export const checklistBody = z.object({ item: text(200), done: z.boolean() });

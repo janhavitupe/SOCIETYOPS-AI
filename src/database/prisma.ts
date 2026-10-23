@@ -59,6 +59,8 @@ export const TENANT_MODELS = new Set<string>([
   'AgentActivityLog',
   'ChatMessage',
   'Notice',
+  'MaintenanceSchedule',
+  'Licence',
 ]);
 
 export class TenantScopeError extends Error {

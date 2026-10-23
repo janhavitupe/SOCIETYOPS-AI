@@ -119,7 +119,9 @@ export class TicketRepository {
         societyId: requireSocietyId(),
         flatNumber: data.flatNumber || 'Unknown Flat',
         residentName: data.residentName || 'Resident',
-        residentPhone: data.residentPhone || '+91 98000 00000',
+        // Empty when nobody is to be texted (a maintenance visit, a manager's own report).
+        // It used to default to a made-up number that was in fact a real person's.
+        residentPhone: data.residentPhone ?? '',
         issueCategory: data.issueCategory,
         description: data.description,
         urgency: data.urgency,

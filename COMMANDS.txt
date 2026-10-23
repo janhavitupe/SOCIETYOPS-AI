@@ -110,3 +110,28 @@ http://localhost:3000/manager          manager dashboard
 http://localhost:3000/manager/buildings   towers, flats, common areas, CSV import/export
 http://localhost:3000/manager/vendors  vendors
 http://localhost:3000/worker           a vendor's jobs
+
+
+10. JENKINS (http://localhost:8080)
+-----------------------------------
+The pipeline is in the Jenkinsfile. Without Docker it uses this machine's Node and
+PostgreSQL, in its own schemas (jenkins_ci, jenkins_test): your data is never touched.
+
+One-time setup:
+  1. Push your code, so GitHub has the Jenkinsfile:   git push
+  2. Jenkins > Manage Jenkins > Credentials > System > Global credentials > Add Credentials
+       Kind: Secret text
+       Secret: the DATABASE_URL value from your .env file
+       ID: societyops-database-url
+  3. Jenkins > New Item > name "societyops-ai" > Pipeline > OK, then under Pipeline:
+       Definition: Pipeline script from SCM
+       SCM: Git
+       Repository URL: https://github.com/janhavitupe/SOCIETYOPS-AI.git
+       Branch Specifier: */phase-1        (or */main once merged)
+       Script Path: Jenkinsfile
+     Save.
+
+Every build:
+  Jenkins > societyops-ai > Build Now
+  Click the build number > Console Output to watch it, Test Results to see each test.
+  It needs about 2 GB of free memory: close Prisma Studio and npm run dev first.
