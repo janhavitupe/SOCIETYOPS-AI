@@ -364,6 +364,7 @@ describe('coverage', () => {
     'POST /api/tickets/:id/close',
     'POST /api/tickets/:id/reopen', // same access rule as close (signoff.test.ts)
     'GET /api/vendors',
+    'GET /api/vendors/performance', // the society's own vendors only (performance.test.ts)
     // Vendor management and buildings: cross-society attempts in buildings.test.ts.
     'POST /api/vendors',
     'PATCH /api/vendors/:id',

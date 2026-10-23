@@ -7,7 +7,7 @@ import * as Sentry from '@sentry/node';
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import path from 'path';
 import { logger, morganMiddleware } from './src/logger';
 import { requestId } from './src/requestContext';
@@ -101,19 +101,42 @@ export async function createApp(
     app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
   }
 
-  const generalLimiter = rateLimit({
+  /*
+   * The screens poll every 30 to 60 seconds, so one person with the app open
+   * makes about 60 requests in 15 minutes. A single 100-per-IP limit locked out
+   * a family, or a society office, sharing one Wi-Fi connection. Signed-in
+   * people now get their own allowance per session; anonymous traffic keeps the
+   * tight per-IP limit; and each address has an overall ceiling, since a
+   * session token is not verified at this point and could be made up.
+   */
+  const sessionToken = (req: Request): string | null => {
+    const bearer = req.headers.authorization?.match(/^Bearer (.+)$/)?.[1];
+    if (bearer) return bearer;
+    return req.headers.cookie?.match(/(?:^|;\s*)(?:__Secure-)?better-auth\.session_token=([^;]+)/)?.[1] ?? null;
+  };
+  const limits = {
     windowMs: 15 * 60 * 1000,
-    max: 100,
     standardHeaders: true,
     legacyHeaders: false,
     message: { error: 'Too many requests, please try again later.' },
-    // The suite issues far more than 100 requests per run.
+    // The suite issues far more requests than any person would.
     skip: () => process.env.NODE_ENV === 'test',
+  } as const;
+  const addressLimiter = rateLimit({
+    ...limits,
+    limit: (req: Request) => (sessionToken(req) ? 3000 : 100),
+    keyGenerator: (req: Request) => ipKeyGenerator(req.ip ?? ''),
+  });
+  const sessionLimiter = rateLimit({
+    ...limits,
+    limit: 600,
+    keyGenerator: (req: Request) => `session:${sessionToken(req)}`,
+    skip: (req: Request) => limits.skip() || !sessionToken(req),
   });
 
   // Scoped to /api: mounted globally it also throttles the SPA's static assets
   // and HMR traffic, which exhausts the quota during a single page load.
-  app.use('/api', generalLimiter);
+  app.use('/api', addressLimiter, sessionLimiter);
   app.use(morganMiddleware);
 
   // Sign-in, OTP, sessions and sign-out (src/auth/auth.ts). Before the JSON

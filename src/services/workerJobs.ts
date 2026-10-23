@@ -3,6 +3,7 @@ import { ticketRepo, vendorRepo } from '../database/repositories';
 import { resolveImageUrls } from './storage';
 import { assignVendor, notifyManagers, notifyResident } from './assignment';
 import { OPEN_WORK_STATUSES } from './dispatch';
+import { acceptMinutes } from './acceptTimeout';
 import { afterTicketChange, rebalanceCategory, tellResident } from './rebalance';
 
 /**
@@ -105,6 +106,9 @@ async function toJob(job: JobRow, queue?: { position: number; total: number }) {
     escalated: job.status === 'Escalated',
     /** The resident sent it back as not fixed. */
     reopened: job.reopenCount > 0,
+    /** When it goes to someone else if not accepted; only for a job not yet answered. */
+    acceptBy:
+      open && stageOf(job) === 'new' ? new Date(assignedAt(job) + acceptMinutes(job.urgency) * 60 * 1000) : null,
     images: await resolveImageUrls(job.images),
     workNote: job.workNote,
     workImages: await resolveImageUrls(job.workImages),

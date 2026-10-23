@@ -4,6 +4,7 @@ import { isOverdue } from './sla';
 import { rebalanceCategory } from './rebalance';
 import { assignVendor } from './assignment';
 import { autoCloseQuietTickets } from './signoff';
+import { passOnUnacceptedJobs } from './acceptTimeout';
 
 /** Words in a complaint that mean someone may be in danger. */
 const EMERGENCY_KEYWORDS = ['stuck', 'gas', 'sewage', 'fire', 'smoke', 'trapped'];
@@ -15,6 +16,8 @@ export interface FollowupResult {
   dispatched: number;
   /** Finished jobs the resident never answered, closed as fixed. */
   autoClosed: number;
+  /** Jobs a vendor did not accept in time, passed to someone else (or flagged). */
+  passedOn: number;
 }
 
 function looksLikeEmergency(description: string): boolean {
@@ -39,6 +42,7 @@ export async function runFollowupCycle(now: Date = new Date()): Promise<Followup
   }
 
   const autoClosed = await autoCloseQuietTickets(now);
+  const passedOn = (await passOnUnacceptedJobs(now)).length;
 
   const allTickets = await ticketRepo.findAll();
 
@@ -94,8 +98,8 @@ export async function runFollowupCycle(now: Date = new Date()): Promise<Followup
     action: 'Autonomous Cycle Completed',
     details:
       `Checked ${allTickets.length} tickets. Dispatched ${dispatched}, ` +
-      `sent ${remindersSent} vendor pings, auto-escalated ${escalatedTickets.length}, auto-closed ${autoClosed}.`,
+      `sent ${remindersSent} vendor pings, auto-escalated ${escalatedTickets.length}, auto-closed ${autoClosed}, passed on ${passedOn} unaccepted.`,
   });
 
-  return { checkedCount: allTickets.length, escalatedTickets, remindersSent, dispatched, autoClosed };
+  return { checkedCount: allTickets.length, escalatedTickets, remindersSent, dispatched, autoClosed, passedOn };
 }

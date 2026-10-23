@@ -4,12 +4,13 @@ import { logger } from '../logger';
 import { prisma } from '../database/prisma';
 import { vendorRepo } from '../database/repositories';
 import { isOnDuty } from '../database/repositories/VendorRepository';
-import { requireAuth, requireManager } from '../auth/authMiddleware';
+import { requireAuth, requireManager, requireStaff } from '../auth/authMiddleware';
+import { vendorPerformance } from '../services/performance';
 import { requireSocietyId } from '../requestContext';
 import { rebalanceCategory } from '../services/rebalance';
 import { linkVendorAccount, unlinkVendorAccount } from '../services/vendorAccounts';
-import { validateBody, validateParams } from './validate';
-import { createVendorBody, idParams, updateVendorBody, type IdParams } from './schemas';
+import { validateBody, validateParams, validateQuery } from './validate';
+import { createVendorBody, idParams, performanceQuery, updateVendorBody, type IdParams } from './schemas';
 
 /**
  * The society's vendor directory. Every query here is scoped to the request's
@@ -21,6 +22,18 @@ router.get('/vendors', requireAuth, async (req, res) => {
   const vendors = await vendorRepo.findAll();
   logger.info('Vendors listed', { count: vendors.length });
   res.json({ count: vendors.length, vendors });
+});
+
+/**
+ * Each vendor's scorecard for a period (default: the last 30 days): jobs,
+ * response and fix times, missed deadlines, reopens, ratings. Committee
+ * members can read it too, for contract renewals.
+ */
+router.get('/vendors/performance', requireStaff, validateQuery(performanceQuery), async (req, res) => {
+  const { from, to } = req.query as unknown as { from?: Date; to?: Date };
+  const end = to ?? new Date();
+  const start = from ?? new Date(end.getTime() - 30 * 24 * 60 * 60 * 1000);
+  res.json({ from: start, to: end, vendors: await vendorPerformance(start, end) });
 });
 
 router.post('/vendors', requireManager, validateBody(createVendorBody), async (req, res) => {

@@ -20,6 +20,7 @@ import { useShell } from '../AppShell';
 import { useTicketActions, useTickets, useVendors } from '../queries';
 import { useVendorActions, type Reassignment, type VendorInput } from '../buildingQueries';
 import { FormError } from './AuthPages';
+import { VendorScorecard } from '../VendorScorecard';
 
 const CATEGORIES = [
   'Plumbing',
@@ -78,6 +79,10 @@ export function VendorsPage() {
         isDarkMode={isDarkMode}
         onAssignVendorToOpenTicket={assignToOldestOpenTicket}
       />
+
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-6">
+        <VendorScorecard />
+      </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-8">
         <Card>

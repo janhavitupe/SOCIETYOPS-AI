@@ -95,10 +95,19 @@ export class TicketRepository {
    * reissued numbers after a soft delete. The sequence is created by the
    * ticket_number_sequence migration; Prisma has no way to model a standalone
    * sequence in schema.prisma, so it lives in raw SQL.
+   *
+   * Numbers already taken are skipped: a ticket created with a fixed id (the
+   * seed's SOC-2001, an import) once collided with the sequence when it got
+   * there. The check is raw SQL so it sees every society's tickets, as the
+   * id is unique across all of them.
    */
   private async nextTicketNumber(): Promise<string> {
-    const rows = await this.prisma.$queryRaw<{ nextval: bigint }[]>`SELECT nextval('ticket_number_seq')`;
-    return rows[0].nextval.toString();
+    for (;;) {
+      const rows = await this.prisma.$queryRaw<{ nextval: bigint }[]>`SELECT nextval('ticket_number_seq')`;
+      const candidate = rows[0].nextval.toString();
+      const taken = await this.prisma.$queryRaw<unknown[]>`SELECT 1 FROM "Ticket" WHERE id = ${`SOC-${candidate}`}`;
+      if (!taken.length) return candidate;
+    }
   }
 
   async create(data: TicketData): Promise<any> {

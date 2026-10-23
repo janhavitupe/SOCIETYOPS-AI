@@ -17,6 +17,16 @@ if (import.meta.env.VITE_SENTRY_DSN) {
   );
 }
 
+// Lets phones install the app and open it on a poor connection. Not in
+// development, where a cached page would hide changes being made.
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {
+      // Without it the app still works; it just cannot be installed.
+    });
+  });
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>

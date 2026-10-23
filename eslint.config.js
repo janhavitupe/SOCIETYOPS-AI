@@ -21,13 +21,17 @@ export default tseslint.config(
     },
   },
   {
-    files: ['src/**/*.tsx', 'src/lib/**/*.ts', 'src/context/**/*.ts'],
+    files: ['src/**/*.tsx', 'src/lib/**/*.ts', 'src/context/**/*.ts', 'src/app/**/*.ts'],
     languageOptions: { globals: { ...globals.browser } },
     plugins: { 'react-hooks': reactHooks },
     rules: {
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn',
     },
+  },
+  {
+    files: ['public/sw.js'],
+    languageOptions: { globals: { ...globals.serviceworker } },
   },
   // Formatting is Prettier's job; this turns off the rules that would fight it.
   prettier,

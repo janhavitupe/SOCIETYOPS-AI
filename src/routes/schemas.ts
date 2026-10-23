@@ -393,3 +393,12 @@ export const onboardingStepParams = z.object({
 export type OnboardingStepParams = z.infer<typeof onboardingStepParams>;
 
 export const onboardingSkipBody = z.object({ skipped: z.boolean().default(true) });
+
+// --- Vendor performance ---
+
+export const performanceQuery = z
+  .object({
+    from: z.coerce.date().optional(),
+    to: z.coerce.date().optional(),
+  })
+  .refine((q) => !q.from || !q.to || q.from < q.to, { message: 'The start must be before the end' });
