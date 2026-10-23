@@ -8,6 +8,7 @@ import { assignVendor } from '../services/assignment';
 import { closeRefusal, escalateRefusal } from '../services/ticketRules';
 import { checkAttachments } from '../services/storage';
 import { afterTicketChange } from '../services/rebalance';
+import { recordRating, reopenTicket, SignoffError } from '../services/signoff';
 import { validateBody, validateParams, validateQuery } from './validate';
 import {
   idParams,
@@ -18,6 +19,7 @@ import {
   assignVendorBody,
   escalateBody,
   closeBody,
+  reopenBody,
 } from './schemas';
 
 /**
@@ -184,9 +186,28 @@ router.post(
       ...(feedback ? { residentFeedback: feedback } : {}),
       ...(rating ? { residentRating: rating } : {}),
     });
-    logger.info('Ticket closed', { ticketId: req.params.id });
+    logger.info('Ticket closed', { ticketId: req.params.id, rating });
     await afterTicketChange(ticket);
+    if (ticket) await recordRating(ticket);
     res.json(ticket);
+  },
+);
+
+// The resident (or a manager) says a job marked done is not fixed.
+router.post(
+  '/tickets/:id/reopen',
+  requireAuth,
+  validateParams(idParams),
+  validateBody(reopenBody),
+  async (req: Request<IdParams>, res: Response) => {
+    try {
+      const ticket = await reopenTicket(req.user!, req.params.id, req.body.reason);
+      logger.info('Ticket reopened', { ticketId: req.params.id, by: req.user!.id });
+      res.json(ticket);
+    } catch (err) {
+      if (err instanceof SignoffError) return res.status(err.status).json({ error: err.message });
+      throw err;
+    }
   },
 );
 

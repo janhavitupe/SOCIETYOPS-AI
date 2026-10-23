@@ -6,6 +6,7 @@ import { IssueCategory, UrgencyLevel, TicketStatus } from '../types';
 import { buildDailyReport } from '../services/analytics';
 import { canActOnTicket, canSeeTicket, isManager as isManagerActor, isStaff, type Actor } from '../auth/actor';
 import { fileTicket } from '../services/filing';
+import { recordRating, reopenTicket, SignoffError } from '../services/signoff';
 import { assignVendor } from '../services/assignment';
 import { afterTicketChange } from '../services/rebalance';
 import { closeRefusal, escalateRefusal } from '../services/ticketRules';
@@ -190,6 +191,22 @@ export const maintenanceToolDeclarations: ChatCompletionTool[] = [
           rating: { type: 'integer' as const, description: 'Optional resident satisfaction rating from 1 to 5' },
         },
         required: ['ticketId'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'reopen_ticket',
+      description:
+        'Send a ticket the vendor marked fixed back to them, when the resident says the problem is not fixed or has come back.',
+      parameters: {
+        type: 'object',
+        properties: {
+          ticketId: str('Ticket ID'),
+          reason: str('What is still wrong, in the resident’s words'),
+        },
+        required: ['ticketId', 'reason'],
       },
     },
   },
@@ -382,6 +399,21 @@ export async function executeToolCall(name: string, args: any, actor: ToolActor)
       return { success: !!escalated, ticket: escalated };
     }
 
+    case 'reopen_ticket': {
+      if (!args.reason?.trim()) return denied('Say what is still wrong');
+      try {
+        const reopened = await reopenTicket(actor, args.ticketId, args.reason.trim());
+        return {
+          success: true,
+          ticket: reopened,
+          message: `Ticket #${reopened.id} reopened${reopened.assignedVendorName ? ` and sent back to ${reopened.assignedVendorName}` : ''}.`,
+        };
+      } catch (err) {
+        if (err instanceof SignoffError) return denied(err.message);
+        throw err;
+      }
+    }
+
     case 'close_ticket': {
       const { error, ticket } = await ticketForActor(args.ticketId, actor);
       if (error) return denied(error);
@@ -401,6 +433,7 @@ export async function executeToolCall(name: string, args: any, actor: ToolActor)
       });
 
       await afterTicketChange(closed);
+      if (closed) await recordRating(closed);
       if (closed) {
         await sendNotification({
           ticketId: closed.id,

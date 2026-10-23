@@ -37,6 +37,14 @@ export interface Ticket {
   assetId?: string | null;
   /** Others who reported the same common-area problem while it was open. */
   alsoReportedBy?: string[];
+  residentId?: string | null;
+  /** What the vendor reported when they finished, with "after" photos. */
+  workNote?: string | null;
+  workImages?: string[];
+  residentRating?: number | null;
+  residentFeedback?: string | null;
+  /** Times the resident sent it back as not fixed. */
+  reopenCount?: number;
   residentName: string;
   residentPhone: string;
   issueCategory: IssueCategory;
@@ -49,7 +57,7 @@ export interface Ticket {
   estimatedEta?: string; // e.g. "30 mins"
   createdAt: string;
   updatedAt: string;
-  resolvedAt?: string;
+  resolvedAt?: string | null;
   images: string[];
   timeline: TimelineEvent[];
   societyName: string;

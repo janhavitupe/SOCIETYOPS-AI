@@ -159,6 +159,12 @@ const settingsRoute = createRoute({
   component: lazyRouteComponent(() => import('./pages/SocietySettingsPage'), 'SocietySettingsPage'),
 });
 
+const setupRoute = createRoute({
+  getParentRoute: () => managerRoute,
+  path: '/setup',
+  component: lazyRouteComponent(() => import('./pages/SetupPage'), 'SetupPage'),
+});
+
 const residentsRoute = createRoute({
   getParentRoute: () => managerRoute,
   path: '/residents',
@@ -198,7 +204,14 @@ const routeTree = rootRoute.addChildren([
   appRoute.addChildren([
     indexRoute,
     residentRoute,
-    managerRoute.addChildren([managerIndexRoute, vendorsRoute, buildingsRoute, residentsRoute, settingsRoute]),
+    managerRoute.addChildren([
+      managerIndexRoute,
+      vendorsRoute,
+      buildingsRoute,
+      residentsRoute,
+      settingsRoute,
+      setupRoute,
+    ]),
     workerRoute,
     platformRoute,
   ]),

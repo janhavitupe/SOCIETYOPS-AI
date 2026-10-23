@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import { Ticket, Vendor } from '../types';
 import { X, Clock, Wrench, User } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { isManagerRole } from '../app/roles';
+import { TicketSignOff } from './TicketSignOff';
 
 interface TicketDetailModalProps {
   ticket: Ticket | null;
@@ -26,6 +29,8 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({
   const [selectedVendorId, setSelectedVendorId] = useState(ticket?.assignedVendorId || '');
   const [escalationReason, setEscalationReason] = useState('');
   const [showEscalateForm, setShowEscalateForm] = useState(false);
+  const { user } = useAuth();
+  const isManager = isManagerRole(user?.role);
 
   if (!ticket) return null;
 
@@ -209,39 +214,72 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({
             </div>
           </div>
 
-          {/* Assign Vendor / Reassign Controls */}
-          <div
-            className={`p-4 rounded border space-y-3 ${isDarkMode ? 'bg-[#121211] border-[#2D2D2A]' : 'bg-[#FAFAF9] border-[#E5E5E1]'}`}
-          >
-            <h3 className="font-bold text-xs uppercase tracking-wider text-[#1A1A1A] dark:text-white">
-              Manager Dispatch Control
-            </h3>
-            <div className="flex items-center space-x-2">
-              <select
-                value={selectedVendorId}
-                onChange={(e) => setSelectedVendorId(e.target.value)}
-                className={`flex-1 p-2 rounded border text-xs font-semibold outline-none ${
-                  isDarkMode ? 'bg-[#181817] border-[#2D2D2A] text-white' : 'bg-white border-[#E5E5E1] text-[#1A1A1A]'
-                }`}
-              >
-                <option value="">Select Vendor to Dispatch...</option>
-                {vendors.map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {v.name} ({v.category}) — {v.rating} stars [
-                    {v.status === 'Busy' ? `Busy, ${v.openJobs} jobs` : v.status}]
-                  </option>
-                ))}
-              </select>
-
-              <button
-                onClick={handleAssign}
-                disabled={!selectedVendorId}
-                className="px-4 py-2 bg-[#6366F1] hover:bg-indigo-600 text-white font-bold text-xs uppercase tracking-wider rounded disabled:opacity-50 cursor-pointer"
-              >
-                Dispatch Vendor
-              </button>
+          {/* What the vendor did, when they finished */}
+          {ticket.workNote && (
+            <div
+              className={`p-4 rounded border space-y-2 text-xs ${isDarkMode ? 'bg-[#121211] border-[#2D2D2A]' : 'bg-[#FAFAF9] border-[#E5E5E1]'}`}
+            >
+              <h3 className="font-bold uppercase tracking-wider text-[#1A1A1A] dark:text-white">Work done</h3>
+              <p>{ticket.workNote}</p>
+              {!!ticket.workImages?.length && (
+                <div className="flex gap-2 overflow-x-auto">
+                  {ticket.workImages.map((src) => (
+                    <a key={src} href={src} target="_blank" rel="noreferrer">
+                      <img src={src} alt="After the work" className="h-20 w-20 rounded border object-cover" />
+                    </a>
+                  ))}
+                </div>
+              )}
+              {!!ticket.residentRating && (
+                <p className="text-[#71716A] dark:text-slate-400">
+                  Rated {ticket.residentRating}/5{ticket.residentFeedback ? `: “${ticket.residentFeedback}”` : ''}
+                </p>
+              )}
+              {!!ticket.reopenCount && (
+                <p className="text-orange-700 dark:text-orange-300">
+                  Reopened {ticket.reopenCount} time{ticket.reopenCount > 1 ? 's' : ''}.
+                </p>
+              )}
             </div>
-          </div>
+          )}
+
+          <TicketSignOff ticket={ticket} onDone={onClose} />
+
+          {/* Assign Vendor / Reassign Controls: managers only; residents saw these and were refused */}
+          {isManager && (
+            <div
+              className={`p-4 rounded border space-y-3 ${isDarkMode ? 'bg-[#121211] border-[#2D2D2A]' : 'bg-[#FAFAF9] border-[#E5E5E1]'}`}
+            >
+              <h3 className="font-bold text-xs uppercase tracking-wider text-[#1A1A1A] dark:text-white">
+                Manager Dispatch Control
+              </h3>
+              <div className="flex items-center space-x-2">
+                <select
+                  value={selectedVendorId}
+                  onChange={(e) => setSelectedVendorId(e.target.value)}
+                  className={`flex-1 p-2 rounded border text-xs font-semibold outline-none ${
+                    isDarkMode ? 'bg-[#181817] border-[#2D2D2A] text-white' : 'bg-white border-[#E5E5E1] text-[#1A1A1A]'
+                  }`}
+                >
+                  <option value="">Select Vendor to Dispatch...</option>
+                  {vendors.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.name} ({v.category}) — {v.rating} stars [
+                      {v.status === 'Busy' ? `Busy, ${v.openJobs} jobs` : v.status}]
+                    </option>
+                  ))}
+                </select>
+
+                <button
+                  onClick={handleAssign}
+                  disabled={!selectedVendorId}
+                  className="px-4 py-2 bg-[#6366F1] hover:bg-indigo-600 text-white font-bold text-xs uppercase tracking-wider rounded disabled:opacity-50 cursor-pointer"
+                >
+                  Dispatch Vendor
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Escalation Form */}
           {showEscalateForm ? (
@@ -270,7 +308,8 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({
             </div>
           ) : (
             ticket.status !== 'Escalated' &&
-            ticket.status !== 'Closed' && (
+            ticket.status !== 'Closed' &&
+            ticket.status !== 'Resolved' && (
               <div className="flex justify-between items-center">
                 <button
                   onClick={() => setShowEscalateForm(true)}
@@ -279,15 +318,17 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({
                   Trigger Emergency Escalation
                 </button>
 
-                <button
-                  onClick={() => {
-                    onCloseTicket(ticket.id);
-                    onClose();
-                  }}
-                  className="px-4 py-2 bg-[#10B981] text-white font-bold text-xs uppercase tracking-wider rounded cursor-pointer hover:bg-emerald-600"
-                >
-                  Mark Closed
-                </button>
+                {isManager && (
+                  <button
+                    onClick={() => {
+                      onCloseTicket(ticket.id);
+                      onClose();
+                    }}
+                    className="px-4 py-2 bg-[#10B981] text-white font-bold text-xs uppercase tracking-wider rounded cursor-pointer hover:bg-emerald-600"
+                  >
+                    Mark Closed
+                  </button>
+                )}
               </div>
             )
           )}

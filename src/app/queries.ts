@@ -162,7 +162,13 @@ export function useTicketActions() {
       ...options,
     }),
     close: useMutation({
-      mutationFn: ({ ticketId }: { ticketId: string }) => post(`/api/tickets/${ticketId}/close`, {}),
+      mutationFn: ({ ticketId, rating, feedback }: { ticketId: string; rating?: number; feedback?: string }) =>
+        post(`/api/tickets/${ticketId}/close`, { ...(rating ? { rating } : {}), ...(feedback ? { feedback } : {}) }),
+      ...options,
+    }),
+    reopen: useMutation({
+      mutationFn: ({ ticketId, reason }: { ticketId: string; reason: string }) =>
+        post(`/api/tickets/${ticketId}/reopen`, { reason }),
       ...options,
     }),
     runFollowup: useMutation({

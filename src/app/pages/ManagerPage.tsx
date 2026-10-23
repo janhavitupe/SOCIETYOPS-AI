@@ -1,5 +1,6 @@
 import { ManagerDashboard } from '@/components/ManagerDashboard';
 import { useShell } from '../AppShell';
+import { SetupChecklist } from '../SetupChecklist';
 import {
   useAgentLogs,
   useAnalytics,
@@ -23,19 +24,22 @@ export function ManagerPage() {
   const refreshAll = useRefreshAll();
 
   return (
-    <ManagerDashboard
-      tickets={tickets.data ?? []}
-      vendors={vendors.data ?? []}
-      agentLogs={agentLogs.data ?? []}
-      societyProfile={societyProfile.data ?? null}
-      residentProfiles={residentProfiles.data ?? []}
-      analytics={analytics.data ?? null}
-      onTicketSelect={openTicket}
-      onRefresh={refreshAll}
-      isDarkMode={isDarkMode}
-      onAssignVendor={(ticketId, vendorId) => actions.assign.mutate({ ticketId, vendorId })}
-      onEscalateTicket={(ticketId, reason) => actions.escalate.mutate({ ticketId, reason })}
-      onCloseTicket={(ticketId) => actions.close.mutate({ ticketId })}
-    />
+    <>
+      <SetupChecklist />
+      <ManagerDashboard
+        tickets={tickets.data ?? []}
+        vendors={vendors.data ?? []}
+        agentLogs={agentLogs.data ?? []}
+        societyProfile={societyProfile.data ?? null}
+        residentProfiles={residentProfiles.data ?? []}
+        analytics={analytics.data ?? null}
+        onTicketSelect={openTicket}
+        onRefresh={refreshAll}
+        isDarkMode={isDarkMode}
+        onAssignVendor={(ticketId, vendorId) => actions.assign.mutate({ ticketId, vendorId })}
+        onEscalateTicket={(ticketId, reason) => actions.escalate.mutate({ ticketId, reason })}
+        onCloseTicket={(ticketId) => actions.close.mutate({ ticketId })}
+      />
+    </>
   );
 }

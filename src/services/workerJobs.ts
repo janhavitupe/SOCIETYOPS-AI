@@ -103,6 +103,8 @@ async function toJob(job: JobRow, queue?: { position: number; total: number }) {
     residentPhone: open ? job.residentPhone : null,
     estimatedEta: open ? job.estimatedEta : null,
     escalated: job.status === 'Escalated',
+    /** The resident sent it back as not fixed. */
+    reopened: job.reopenCount > 0,
     images: await resolveImageUrls(job.images),
     workNote: job.workNote,
     workImages: await resolveImageUrls(job.workImages),
@@ -256,7 +258,8 @@ export async function act(vendorId: string, ticketId: string, input: ActionInput
       await prisma.vendor.update({ where: { id: vendorId }, data: { completedJobs: { increment: 1 } } });
       await messageResident(
         job,
-        `Complaint #${job.id} has been fixed by ${vendor.name}: ${note}. Please check and close it in SocietyOps, or tell us if it is not right.`,
+        `Complaint #${job.id} has been fixed by ${vendor.name}: ${note}. Please confirm it is fixed and rate the work in SocietyOps, ` +
+          `or reopen it if it is not right. It closes by itself in 48 hours.`,
       );
       await afterTicketChange(finished);
       break;

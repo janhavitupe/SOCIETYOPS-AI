@@ -154,6 +154,9 @@ function JobCard({ job, open, onToggle }: { job: WorkerJob; open: boolean; onTog
               {isNext ? 'Next' : `#${job.queue?.position ?? '–'} in line`} · {job.id}
             </span>
             <span className="flex items-center gap-1.5">
+              {job.reopened && (
+                <span className="rounded bg-orange-600 px-1.5 py-0.5 font-semibold text-white">Reopened</span>
+              )}
               {job.escalated && (
                 <span className="inline-flex items-center gap-1 rounded bg-red-600 px-1.5 py-0.5 font-semibold text-white">
                   <AlertTriangle className="h-3 w-3" /> Urgent

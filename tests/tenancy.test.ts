@@ -362,6 +362,7 @@ describe('coverage', () => {
     'POST /api/tickets/:id/assign',
     'POST /api/tickets/:id/escalate',
     'POST /api/tickets/:id/close',
+    'POST /api/tickets/:id/reopen', // same access rule as close (signoff.test.ts)
     'GET /api/vendors',
     // Vendor management and buildings: cross-society attempts in buildings.test.ts.
     'POST /api/vendors',
@@ -408,6 +409,11 @@ describe('coverage', () => {
     'POST /api/worker/jobs/:id/status',
     'PUT /api/worker/duty',
     'GET /api/notifications',
+    // The setup wizard: the caller's own society only (onboarding.test.ts).
+    'GET /api/onboarding',
+    'POST /api/onboarding/steps/:step/visit',
+    'POST /api/onboarding/steps/:step/skip',
+    'POST /api/onboarding/finish',
     // An owner's own flat only: other flats and societies in household.test.ts.
     'GET /api/my-flat',
     'POST /api/my-flat/requests/:id/approve',

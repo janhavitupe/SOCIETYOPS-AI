@@ -23,7 +23,8 @@ export function CreateSocietyForm({ onCancel }: { onCancel?: () => void }) {
     // The session has moved to the new society; nothing cached belongs to it.
     queryClient.clear();
     await refresh();
-    navigate({ to: '/manager/settings' });
+    // Straight into the setup wizard: buildings, common areas, staff, vendors, residents.
+    navigate({ to: '/manager/setup' });
   });
 
   return (

@@ -3,6 +3,7 @@ import { sendNotification } from './notifications';
 import { isOverdue } from './sla';
 import { rebalanceCategory } from './rebalance';
 import { assignVendor } from './assignment';
+import { autoCloseQuietTickets } from './signoff';
 
 /** Words in a complaint that mean someone may be in danger. */
 const EMERGENCY_KEYWORDS = ['stuck', 'gas', 'sewage', 'fire', 'smoke', 'trapped'];
@@ -12,6 +13,8 @@ export interface FollowupResult {
   escalatedTickets: any[];
   remindersSent: number;
   dispatched: number;
+  /** Finished jobs the resident never answered, closed as fixed. */
+  autoClosed: number;
 }
 
 function looksLikeEmergency(description: string): boolean {
@@ -34,6 +37,8 @@ export async function runFollowupCycle(now: Date = new Date()): Promise<Followup
   for (const category of new Set(vendors.map((v: { category: string }) => v.category))) {
     await rebalanceCategory(category);
   }
+
+  const autoClosed = await autoCloseQuietTickets(now);
 
   const allTickets = await ticketRepo.findAll();
 
@@ -89,8 +94,8 @@ export async function runFollowupCycle(now: Date = new Date()): Promise<Followup
     action: 'Autonomous Cycle Completed',
     details:
       `Checked ${allTickets.length} tickets. Dispatched ${dispatched}, ` +
-      `sent ${remindersSent} vendor pings, auto-escalated ${escalatedTickets.length}.`,
+      `sent ${remindersSent} vendor pings, auto-escalated ${escalatedTickets.length}, auto-closed ${autoClosed}.`,
   });
 
-  return { checkedCount: allTickets.length, escalatedTickets, remindersSent, dispatched };
+  return { checkedCount: allTickets.length, escalatedTickets, remindersSent, dispatched, autoClosed };
 }

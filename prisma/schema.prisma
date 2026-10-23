@@ -26,6 +26,8 @@ model Society {
   status             String    @default("onboarding")
   /// The last onboarding wizard step the admin completed, so it can resume.
   onboardingStep     String?
+  /// Wizard steps the admin chose to skip for now.
+  onboardingSkipped  String[]  @default([])
   /// Short code in the resident join link (/join/<code>).
   joinCode           String    @unique
   plan               String    @default("trial")
@@ -338,6 +340,8 @@ model Ticket {
   declinedVendorIds  String[]  @default([])
   /// Other people who reported the same common-area problem while this was open.
   alsoReportedBy     String[]  @default([])
+  /// Times the resident said it was not fixed and sent it back.
+  reopenCount        Int       @default(0)
 
   /// Where the problem is: a flat, or a common area and optionally its asset.
   flatId             String?

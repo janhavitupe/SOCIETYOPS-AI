@@ -261,6 +261,10 @@ export const escalateBody = z.object({
   reason: text(500).optional(),
 });
 
+export const reopenBody = z.object({
+  reason: text(500),
+});
+
 export const closeBody = z.object({
   feedback: text(1000).optional(),
   rating: z.number().int().min(1).max(5).optional(),
@@ -380,3 +384,12 @@ export const listResidentsQuery = z.object({
 export const inviteResidentsBody = z.object({
   userIds: z.array(text(64)).min(1, 'Choose at least one resident').max(1000),
 });
+
+// --- Onboarding wizard ---
+
+export const onboardingStepParams = z.object({
+  step: z.enum(['details', 'buildings', 'common_areas', 'staff', 'vendors', 'residents']),
+});
+export type OnboardingStepParams = z.infer<typeof onboardingStepParams>;
+
+export const onboardingSkipBody = z.object({ skipped: z.boolean().default(true) });

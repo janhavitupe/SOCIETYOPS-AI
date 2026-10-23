@@ -54,7 +54,7 @@ export function SocietySettingsPage() {
         <h1 className="text-2xl font-semibold tracking-tight">Society settings</h1>
         <p className="text-sm text-muted-foreground">
           {society.data.status === 'onboarding'
-            ? 'Your society is being set up. Next you will add its buildings and invite residents.'
+            ? 'Your society is being set up. The setup checklist on the dashboard shows what is left.'
             : 'Details shown to residents and staff.'}
         </p>
       </div>

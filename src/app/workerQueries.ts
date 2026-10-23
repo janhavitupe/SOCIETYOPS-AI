@@ -19,6 +19,8 @@ export interface WorkerJob {
   residentPhone: string | null;
   estimatedEta: string | null;
   escalated: boolean;
+  /** The resident sent it back as not fixed. */
+  reopened: boolean;
   images: string[];
   workNote: string | null;
   workImages: string[];
