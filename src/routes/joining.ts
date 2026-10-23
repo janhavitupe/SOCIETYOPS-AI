@@ -1,6 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { logger } from '../logger';
 import { unscopedPrisma } from '../database/prisma';
+import { withSociety } from '../requestContext';
+import { tellOwnersOfFamilyRequest } from '../services/household';
 import { requireManager, requireSignedIn } from '../auth/authMiddleware';
 import {
   acceptInvite,
@@ -68,6 +70,12 @@ router.post(
 
       const result = await requestToJoin(req.params.code, identity, req.body);
       if (result.approved) await enter(identity.sessionId, result.society.id);
+
+      // Family can be let in by the flat's owner, not only the society office.
+      if (!result.approved && result.occupant.type === 'family') {
+        const name = identity.name || req.body.name || 'Someone';
+        await withSociety(result.society.id, () => tellOwnersOfFamilyRequest(result.flat.id, result.flat.number, name));
+      }
 
       logger.info('Join request', { societyId: result.society.id, flatId: result.flat.id, approved: result.approved });
       res.status(201).json({

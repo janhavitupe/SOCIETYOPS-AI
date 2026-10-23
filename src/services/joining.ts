@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { prisma, unscopedPrisma } from '../database/prisma';
 import { requireSocietyId } from '../requestContext';
 import type { SocietyRole } from '../auth/actor';
+import { sendNotification } from './notifications';
 
 /**
  * How people get into a society other than being added by a manager:
@@ -27,7 +28,12 @@ export class JoinError extends Error {
 const usable = (now = new Date()) => ({ acceptedAt: null, revokedAt: null, expiresAt: { gt: now } });
 
 /** Makes a membership active (or pending), reviving one ended earlier. */
-export async function upsertMembership(societyId: string, userId: string, role: SocietyRole, status: 'active' | 'pending') {
+export async function upsertMembership(
+  societyId: string,
+  userId: string,
+  role: SocietyRole,
+  status: 'active' | 'pending',
+) {
   const existing = await unscopedPrisma.membership.findUnique({
     where: { societyId_userId_role: { societyId, userId, role } },
   });
@@ -143,6 +149,26 @@ export async function listJoinRequests() {
   });
 }
 
+/** Lets the person who asked know how it went. */
+async function tellRequester(occupantId: string, approved: boolean) {
+  const row = await prisma.flatOccupant.findFirst({
+    where: { id: occupantId },
+    include: { user: true, flat: { select: { number: true } } },
+  });
+  if (!row?.user.phoneNumber) return;
+  const society = await unscopedPrisma.society.findUnique({ where: { id: row.societyId }, select: { name: true } });
+  await sendNotification({
+    ticketId: null,
+    recipientType: 'resident',
+    recipientName: row.user.name,
+    phone: row.user.phoneNumber,
+    recipientUserId: row.userId,
+    message: approved
+      ? `Your request to join flat ${row.flat.number} at ${society?.name ?? 'your society'} has been approved. Sign in to SocietyOps to report maintenance issues.`
+      : `Your request to join flat ${row.flat.number} at ${society?.name ?? 'your society'} was not approved. Contact the society office if this is a mistake.`,
+  });
+}
+
 export async function approveJoinRequest(occupantId: string, approvedById: string) {
   const request = await prisma.flatOccupant.findFirst({ where: { id: occupantId, status: 'pending' } });
   if (!request) throw new JoinError(404, 'Join request not found');
@@ -152,6 +178,7 @@ export async function approveJoinRequest(occupantId: string, approvedById: strin
     data: { status: 'active', moveInDate: request.moveInDate ?? new Date(), approvedById },
   });
   await upsertMembership(requireSocietyId(), request.userId, 'resident', 'active');
+  await tellRequester(occupant.id, true);
   return occupant;
 }
 
@@ -175,6 +202,7 @@ export async function rejectJoinRequest(occupantId: string, decidedById: string)
       data: { status: 'removed' },
     });
   }
+  await tellRequester(occupant.id, false);
   return occupant;
 }
 

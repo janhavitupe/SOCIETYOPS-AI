@@ -408,6 +408,11 @@ describe('coverage', () => {
     'POST /api/worker/jobs/:id/status',
     'PUT /api/worker/duty',
     'GET /api/notifications',
+    // An owner's own flat only: other flats and societies in household.test.ts.
+    'GET /api/my-flat',
+    'POST /api/my-flat/requests/:id/approve',
+    'POST /api/my-flat/requests/:id/reject',
+    'POST /api/my-flat/members/:id/remove',
     // The resident directory: other societies in residents.test.ts.
     'GET /api/residents',
     'POST /api/residents/invite',
