@@ -28,6 +28,13 @@ def run(String command) {
 pipeline {
   agent any
 
+  // Builds every pushed commit. Jenkins checks GitHub every two minutes or so,
+  // since a Jenkins on localhost cannot receive GitHub's webhooks. Several
+  // commits pushed together make one build.
+  triggers {
+    pollSCM('H/2 * * * *')
+  }
+
   options {
     timeout(time: 40, unit: 'MINUTES')
     disableConcurrentBuilds()

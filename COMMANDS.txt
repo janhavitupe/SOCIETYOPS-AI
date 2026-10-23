@@ -135,3 +135,10 @@ Every build:
   Jenkins > societyops-ai > Build Now
   Click the build number > Console Output to watch it, Test Results to see each test.
   It needs about 2 GB of free memory: close Prisma Studio and npm run dev first.
+
+Automatic builds on every push:
+  The Jenkinsfile tells Jenkins to check GitHub every 2 minutes and build any new
+  commit. It switches on after the first build you start by hand (Build Now once).
+  Builds run on what is pushed to GitHub, so: commit, then git push.
+  To build every branch, not only phase-1, make the job a "Multibranch Pipeline"
+  with the same repository URL instead of a plain Pipeline.
